@@ -1,0 +1,25 @@
+preprocessing:
+  enabled: true
+  debug: true
+  roi:
+    enabled: true
+    method: "contour"
+    min_area: 500
+    padding: 10
+    merge_overlap: 0.3
+  grayscale:
+    enabled: true
+  upscale:
+    enabled: true
+    method: "cubic"
+    scale_factor: 2
+  denoise:
+    enabled: true
+    method: "gaussian"
+    strength: "light"
+  binarize:
+    enabled: true
+    method: "otsu"
+    invert: false
+    block_size: 11
+    c: 2

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "python-code-review": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "3bbbb9d81dcbfe00d62a061aa80b0a4bc92f63edb40e8839af96ffeb28760f76"
+    }
+  }
+}

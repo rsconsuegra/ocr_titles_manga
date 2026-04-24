@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+.preprocess/
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+frontend/dist/
+frontend/node_modules/
+.opencode/
+.agents/

@@ -1,0 +1,15 @@
+models:
+  tesseract:
+    enabled: true
+    languages: ["eng", "jpn"]
+    psm: 3
+    oem: 3
+  paddle:
+    enabled: false
+    languages: ["en", "ja"]
+  easyocr:
+    enabled: false
+    languages: ["en", "ja"]
+  glm_ocr:
+    enabled: false
+    api_endpoint: ""

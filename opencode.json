@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "agenta": {
+      "type": "remote",
+      "url": "https://mcp.eu.algolia.com/1/M_CIMvH38zVydbZOtDAzTjI3szBOMUq0tDA0NTJOMjO3TEtLtUwxNDUxNrfOrdRNyU8u1s1NLMpOyS_PszY0NzMyNDA1sDQFAA/mcp",
+      "enabled": true
+    }
+  },
+  "plugin": [
+    "@tarquinen/opencode-dcp@latest",
+    "opencode-mem@latest"
+  ],
+  "provider": {
+    "zai-coding-plan": {
+      "options": {
+        "timeout": 600000
+      }
+    }
+  }
+}

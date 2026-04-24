@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+@theme {
+  --color-chassis: #1e2229;
+  --color-panel: #272d36;
+  --color-panel-light: #313842;
+  --color-inset: #2a3039;
+  --color-lcd: #141920;
+  --color-teal: #38b2ac;
+  --color-teal-dim: #2d8a84;
+  --color-teal-glow: #38b2ac66;
+  --color-amber: #d4a052;
+  --color-amber-dim: #b8884a;
+  --color-amber-glow: #d4a05266;
+  --color-bright: #e8ecf1;
+  --color-muted: #6b7a8d;
+  --color-surface-dark: #0a0c10;
+  --color-highlight: #373f4b;
+
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-tech: "DM Sans", sans-serif;
+}
+
+:root {
+  --neo-shadow: 6px 6px 14px rgba(10, 12, 16, 0.65),
+    -6px -6px 14px rgba(55, 63, 75, 0.35);
+  --neo-inset: inset 4px 4px 10px rgba(10, 12, 16, 0.6),
+    inset -4px -4px 10px rgba(55, 63, 75, 0.25);
+  --neo-deep-inset: inset 6px 6px 14px rgba(10, 12, 16, 0.7),
+    inset -6px -6px 14px rgba(55, 63, 75, 0.2);
+  --neo-shadow-sm: 3px 3px 8px rgba(10, 12, 16, 0.6),
+    -3px -3px 8px rgba(55, 63, 75, 0.3);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a424e #1e2229;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e2229;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a424e;
+  border-radius: 3px;
+}
+
+@keyframes scanline-sweep {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes breathing-glow {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.08;
+  }
+}
+
+@keyframes haptic-snap {
+  0% {
+    transform: translateY(1px) scale(0.98);
+  }
+  25% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(1px) scale(0.98);
+  }
+  75% {
+    transform: translateY(0px) scale(1);
+  }
+  100% {
+    transform: translateY(1px) scale(0.98);
+  }
+}
+
+@keyframes led-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.neo-panel {
+  background: #272d36;
+  box-shadow: var(--neo-shadow);
+  border-radius: 12px;
+}
+
+.neo-inset {
+  background: #2a3039;
+  box-shadow: var(--neo-inset);
+  border-radius: 10px;
+}
+
+.neo-deep-inset {
+  background: #252b34;
+  box-shadow: var(--neo-deep-inset);
+  border-radius: 10px;
+}
+
+.lcd-screen {
+  background: #141920;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.lcd-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(56, 178, 172, 0.04) 49.5%,
+    rgba(56, 178, 172, 0.08) 50%,
+    rgba(56, 178, 172, 0.04) 50.5%,
+    transparent 100%
+  );
+  background-size: 100% 4px;
+  animation: scanline-sweep 4s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.lcd-screen > * {
+  position: relative;
+  z-index: 2;
+}
+
+.lcd-graticule {
+  background-image: radial-gradient(
+    circle,
+    rgba(56, 178, 172, 0.1) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+
+.led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2a2f38;
+  box-shadow: inset 2px 2px 4px rgba(10, 12, 16, 0.6),
+    inset -2px -2px 4px rgba(55, 63, 75, 0.25);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.led-active {
+  background: #38b2ac;
+  box-shadow: 0 0 8px #38b2ac66, 0 0 20px #38b2ac33,
+    inset 0 0 4px rgba(255, 255, 255, 0.2);
+  animation: led-pulse 0.3s ease-out;
+}
+
+.led-amber {
+  background: #d4a052;
+  box-shadow: 0 0 8px #d4a05266, 0 0 20px #d4a05233,
+    inset 0 0 4px rgba(255, 255, 255, 0.2);
+  animation: led-pulse 0.3s ease-out;
+}
+
+.led-off {
+  background: #2a2f38;
+  box-shadow: inset 2px 2px 4px rgba(10, 12, 16, 0.6),
+    inset -2px -2px 4px rgba(55, 63, 75, 0.25);
+}
+
+.tech-label {
+  font-family: "DM Sans", sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #6b7a8d;
+}
+
+.tech-label-bright {
+  font-family: "DM Sans", sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #e8ecf1;
+}
+
+.breathing {
+  animation: breathing-glow 3s ease-in-out infinite;
+}
+
+.haptic-snap {
+  animation: haptic-snap 0.16s steps(4) forwards;
+}
+
+.neo-press {
+  transition: box-shadow 0.08s ease, transform 0.08s ease;
+}
+
+.neo-press:active {
+  box-shadow: inset 4px 4px 10px rgba(10, 12, 16, 0.6),
+    inset -4px -4px 10px rgba(55, 63, 75, 0.25);
+  transform: translateY(1px) scale(0.98);
+}

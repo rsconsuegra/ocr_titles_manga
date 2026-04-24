@@ -1,0 +1,50 @@
+# Match Black’s line length
+line-length = 88
+
+# Target modern Python
+target-version = "py312"
+
+# Directories to lint (default: current dir)
+src = ["ocr_manga_title", "tests"]
+
+# Enable useful rule sets (see below)
+lint.select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "B",  # bugbear
+    "I",  # isort
+    "UP", # pyupgrade
+    "N",  # pep8-naming
+    "D",  # pydocstyle
+    "C4", # flake8-comprehensions
+    "SIM",# flake8-simplify
+    "T20",# flake8-print (debug prints)
+    "ERA",# eradicate (commented-out code)
+]
+
+# Ignore conflicting or noisy rules
+lint.ignore = [
+    "D205",  # Missing space after docstring
+    "D100",  # Missing docstring in public module
+    "D104",  # Missing docstring in public package
+    "D107",  # Missing docstring in __init__
+    "E501",  # Line too long (Black handles it)
+    "B008",  # Function call in default argument (FastAPI Depends pattern)
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["D"]
+"migrations/**" = ["D", "E", "F"]
+"*.ipynb" = ["T201"]
+
+# Format string options
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# Isort-like configuration
+[lint.isort]
+combine-as-imports = true
+known-first-party = ["ocr_manga_title"]
+force-single-line = false
