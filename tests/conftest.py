@@ -27,11 +27,7 @@ async def db_session(db_engine):
 
 @pytest.fixture
 def valid_configs_toml(tmp_path):
-    images_dir = tmp_path / "images"
-    images_dir.mkdir()
-    toml_content = f'''
-images_path = "{images_dir}"
-
+    toml_content = '''
 [openrouter]
 api_key = "sk-or-test-key-12345"
 default_model = "google/gemini-2.5-flash"

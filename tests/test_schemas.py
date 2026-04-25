@@ -58,11 +58,9 @@ class TestPipelineResult:
 
 
 class TestAppConfig:
-    def test_app_config_missing_openrouter(self, tmp_path):
-        images_dir = tmp_path / "images"
-        images_dir.mkdir()
+    def test_app_config_missing_openrouter(self):
         with pytest.raises(Exception):
-            AppConfig(images_path=images_dir)
+            AppConfig()
 
     def test_openrouter_config_api_key_validation(self):
         with pytest.raises(ConfigurationError, match="sk-"):

@@ -1,27 +1,25 @@
 """Tests for the quick-run API endpoint."""
 
-import base64
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
 from PIL import Image
 
 from ocr_manga_title.api.schemas.ocr import OCRResultData
 
 
-def _make_png_data_url(width: int = 10, height: int = 10) -> str:
+def _make_png_bytes(width: int = 10, height: int = 10) -> bytes:
     img = Image.new("RGB", (width, height), (255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{b64}"
+    return buf.getvalue()
 
 
 async def test_quick_run_no_models(client):
     response = await client.post(
         "/api/v1/run/quick",
-        json={"image": _make_png_data_url(), "ocr_models": {}},
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={"ocr_models": "{}"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -36,12 +34,12 @@ async def test_quick_run_with_tesseract(client):
         confidence=0.88,
         processing_time_ms=200,
     )]
-    with patch("ocr_manga_title.api.routes.run.run_all_enabled_models", return_value=mock_results):
+    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)):
         response = await client.post(
             "/api/v1/run/quick",
-            json={
-                "image": _make_png_data_url(),
-                "ocr_models": {"tesseract": {"enabled": True}},
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={
+                "ocr_models": '{"tesseract": {"enabled": true}}',
             },
         )
 
@@ -59,14 +57,14 @@ async def test_quick_run_with_preprocessing(client):
         confidence=0.75,
         processing_time_ms=100,
     )]
-    with patch("ocr_manga_title.api.routes.run.run_all_enabled_models", return_value=mock_results), \
-         patch("ocr_manga_title.api.routes.run.run_preprocessing_pipeline", return_value="/tmp/test.png"):
+    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)), \
+         patch("ocr_manga_title.api.routes.run.run_preprocessing_cached", new=AsyncMock(return_value="/tmp/test.png")):
         response = await client.post(
             "/api/v1/run/quick",
-            json={
-                "image": _make_png_data_url(),
-                "preprocess_steps": {"grayscale": {"enabled": True}},
-                "ocr_models": {"tesseract": {"enabled": True}},
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={
+                "preprocess_steps": '{"grayscale": {"enabled": true}}',
+                "ocr_models": '{"tesseract": {"enabled": true}}',
             },
         )
 
@@ -92,14 +90,14 @@ async def test_quick_run_with_llm(client):
         source_method="llm",
     )
 
-    with patch("ocr_manga_title.api.routes.run.run_all_enabled_models", return_value=mock_results), \
+    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)), \
          patch("ocr_manga_title.api.routes.run.run_llm_extraction", return_value=mock_llm):
         response = await client.post(
             "/api/v1/run/quick",
-            json={
-                "image": _make_png_data_url(),
-                "ocr_models": {"tesseract": {"enabled": True}},
-                "enable_llm": True,
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={
+                "ocr_models": '{"tesseract": {"enabled": true}}',
+                "enable_llm": "true",
             },
         )
 
@@ -114,12 +112,12 @@ async def test_quick_run_model_not_available(client):
         model_name="paddle",
         error="Model not available",
     )]
-    with patch("ocr_manga_title.api.routes.run.run_all_enabled_models", return_value=mock_results):
+    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)):
         response = await client.post(
             "/api/v1/run/quick",
-            json={
-                "image": _make_png_data_url(),
-                "ocr_models": {"paddle": {"enabled": True}},
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={
+                "ocr_models": '{"paddle": {"enabled": true}}',
             },
         )
 
@@ -132,6 +130,7 @@ async def test_quick_run_model_not_available(client):
 async def test_quick_run_invalid_image(client):
     response = await client.post(
         "/api/v1/run/quick",
-        json={"image": "garbage", "ocr_models": {}},
+        files={"file": ("image.png", b"garbage", "image/png")},
+        data={"ocr_models": "{}"},
     )
     assert response.status_code == 400

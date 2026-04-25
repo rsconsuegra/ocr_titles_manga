@@ -1,21 +1,18 @@
 """Tests for the OCR playground API endpoints."""
 
-import base64
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
 from PIL import Image
 
 from ocr_manga_title.api.schemas.ocr import LLMResultData, OCRResultData
 
 
-def _make_png_data_url(width: int = 10, height: int = 10) -> str:
+def _make_png_bytes(width: int = 10, height: int = 10) -> bytes:
     img = Image.new("RGB", (width, height), (255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{b64}"
+    return buf.getvalue()
 
 
 async def test_list_ocr_registry(client):
@@ -50,7 +47,8 @@ async def test_list_ocr_registry_has_enabled_flag(client):
 async def test_run_ocr_unknown_model(client):
     response = await client.post(
         "/api/v1/ocr/run",
-        json={"image": _make_png_data_url(), "model_name": "nonexistent"},
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={"model_name": "nonexistent"},
     )
     assert response.status_code == 400
     assert "Unknown model" in response.json()["detail"]
@@ -59,7 +57,8 @@ async def test_run_ocr_unknown_model(client):
 async def test_run_ocr_invalid_image(client):
     response = await client.post(
         "/api/v1/ocr/run",
-        json={"image": "not-a-valid-image", "model_name": "tesseract"},
+        files={"file": ("image.png", b"not-a-valid-image", "image/png")},
+        data={"model_name": "tesseract"},
     )
     assert response.status_code == 400
 
@@ -71,10 +70,11 @@ async def test_run_ocr_tesseract_success(client):
         confidence=0.92,
         processing_time_ms=150,
     )
-    with patch("ocr_manga_title.api.routes.ocr.run_single_model", return_value=mock_result):
+    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
         response = await client.post(
             "/api/v1/ocr/run",
-            json={"image": _make_png_data_url(), "model_name": "tesseract"},
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={"model_name": "tesseract"},
         )
 
     assert response.status_code == 200
@@ -98,14 +98,14 @@ async def test_run_ocr_with_llm(client):
         source_method="llm",
     )
 
-    with patch("ocr_manga_title.api.routes.ocr.run_single_model", return_value=mock_ocr), \
+    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_ocr)), \
          patch("ocr_manga_title.api.routes.ocr.run_llm_extraction", return_value=mock_llm):
         response = await client.post(
             "/api/v1/ocr/run",
-            json={
-                "image": _make_png_data_url(),
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={
                 "model_name": "tesseract",
-                "enable_llm": True,
+                "enable_llm": "true",
             },
         )
 
@@ -121,10 +121,11 @@ async def test_run_ocr_model_not_available(client):
         model_name="paddle",
         error="Model not available",
     )
-    with patch("ocr_manga_title.api.routes.ocr.run_single_model", return_value=mock_result):
+    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
         response = await client.post(
             "/api/v1/ocr/run",
-            json={"image": _make_png_data_url(), "model_name": "paddle"},
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={"model_name": "paddle"},
         )
 
     assert response.status_code == 400
@@ -138,10 +139,11 @@ async def test_run_ocr_model_run_error(client):
         confidence=0.0,
         processing_time_ms=50,
     )
-    with patch("ocr_manga_title.api.routes.ocr.run_single_model", return_value=mock_result):
+    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
         response = await client.post(
             "/api/v1/ocr/run",
-            json={"image": _make_png_data_url(), "model_name": "tesseract"},
+            files={"file": ("image.png", _make_png_bytes(), "image/png")},
+            data={"model_name": "tesseract"},
         )
 
     assert response.status_code == 200

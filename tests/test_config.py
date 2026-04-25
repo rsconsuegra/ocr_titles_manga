@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
@@ -11,7 +9,6 @@ from ocr_manga_title.schemas import ModelConfig
 class TestLoadConfig:
     def test_load_valid_config(self, valid_configs_toml):
         config = load_config(valid_configs_toml)
-        assert config.images_path.exists()
         assert config.openrouter.api_key.get_secret_value() == "sk-or-test-key-12345"
         assert config.openrouter.default_model == "google/gemini-2.5-flash"
 
@@ -27,17 +24,13 @@ class TestLoadConfig:
 
     def test_load_config_missing_openrouter(self, tmp_path):
         f = tmp_path / "no_openrouter.toml"
-        f.write_text('images_path = "/tmp"')
+        f.write_text('')
         with pytest.raises(ConfigurationError):
             load_config(f)
 
     def test_load_config_missing_api_key(self, tmp_path):
-        images_dir = tmp_path / "images"
-        images_dir.mkdir()
         f = tmp_path / "no_key.toml"
-        f.write_text(f'''
-images_path = "{images_dir}"
-
+        f.write_text('''
 [openrouter]
 default_model = "google/gemini-2.5-flash"
 ''')
@@ -45,49 +38,17 @@ default_model = "google/gemini-2.5-flash"
             load_config(f)
 
     def test_load_config_invalid_api_key(self, tmp_path):
-        images_dir = tmp_path / "images"
-        images_dir.mkdir()
         f = tmp_path / "bad_key.toml"
-        f.write_text(f'''
-images_path = "{images_dir}"
-
+        f.write_text('''
 [openrouter]
 api_key = "invalid-key"
 ''')
         with pytest.raises(ConfigurationError, match="sk-"):
             load_config(f)
 
-    def test_load_config_missing_images_path(self, tmp_path):
-        f = tmp_path / "no_path.toml"
-        f.write_text("""
-[openrouter]
-api_key = "sk-or-test"
-""")
-        with pytest.raises(ConfigurationError):
-            load_config(f)
-
-    def test_load_config_nonexistent_images_path_warns(self, tmp_path, caplog):
-        import logging
-
-        f = tmp_path / "warn_path.toml"
-        f.write_text("""
-images_path = "/nonexistent/path/xyz"
-
-[openrouter]
-api_key = "sk-or-test"
-""")
-        with caplog.at_level(logging.WARNING):
-            config = load_config(f)
-        assert "does not exist" in caplog.text
-        assert config.images_path == Path("/nonexistent/path/xyz")
-
     def test_load_config_default_base_url(self, tmp_path):
-        images_dir = tmp_path / "images"
-        images_dir.mkdir()
         f = tmp_path / "minimal.toml"
-        f.write_text(f'''
-images_path = "{images_dir}"
-
+        f.write_text('''
 [openrouter]
 api_key = "sk-or-test"
 ''')
@@ -95,12 +56,8 @@ api_key = "sk-or-test"
         assert config.openrouter.base_url == "https://openrouter.ai/api/v1"
 
     def test_load_config_default_model(self, tmp_path):
-        images_dir = tmp_path / "images"
-        images_dir.mkdir()
         f = tmp_path / "minimal.toml"
-        f.write_text(f'''
-images_path = "{images_dir}"
-
+        f.write_text('''
 [openrouter]
 api_key = "sk-or-test"
 ''')

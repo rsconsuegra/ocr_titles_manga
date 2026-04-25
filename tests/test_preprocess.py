@@ -500,18 +500,18 @@ class TestROIStep:
 
 
 class TestPreProcessingPipeline:
-    def test_pipeline_init_with_steps(self, valid_preprocess_yaml, tmp_path):
+    def test_pipeline_init_with_steps(self, valid_preprocess_yaml):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = load_preprocess_config(valid_preprocess_yaml)
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         step_names = [s.name for s in pipeline._steps]
         assert "grayscale" in step_names
         assert "binarize" in step_names
         assert "upscale" in step_names
         assert "denoise" in step_names
 
-    def test_pipeline_init_with_all_steps(self, tmp_path):
+    def test_pipeline_init_with_all_steps(self):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = {
@@ -525,11 +525,11 @@ class TestPreProcessingPipeline:
                 "binarize": {"enabled": True, "method": "otsu"},
             }
         }
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         step_names = [s.name for s in pipeline._steps]
         assert step_names == ["roi", "grayscale", "upscale", "denoise", "binarize"]
 
-    def test_pipeline_process_all_steps(self, test_image_file, tmp_path):
+    def test_pipeline_process_all_steps(self, test_image_file):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = {
@@ -543,14 +543,15 @@ class TestPreProcessingPipeline:
                 "binarize": {"enabled": True, "method": "otsu"},
             }
         }
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         result = pipeline.process(test_image_file)
         assert isinstance(result, PreProcessResult)
         assert len(result.steps) == 5
         step_names = [s.step_name for s in result.steps]
         assert step_names == ["roi", "grayscale", "upscale", "denoise", "binarize"]
+        assert result.output_path is not None
 
-    def test_pipeline_process_returns_result(self, test_image_file, tmp_path):
+    def test_pipeline_process_returns_result(self, test_image_file):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = {
@@ -563,28 +564,27 @@ class TestPreProcessingPipeline:
                 "binarize": {"enabled": True, "method": "otsu"},
             }
         }
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         result = pipeline.process(test_image_file)
         assert isinstance(result, PreProcessResult)
         assert result.input_path == test_image_file
         assert len(result.steps) == 5
         assert all(s.success for s in result.steps)
         assert result.total_processing_time_ms >= 0
+        assert result.output_path is not None
 
-    def test_pipeline_process_invalid_image(self, tmp_path):
+    def test_pipeline_process_invalid_image(self):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = {"preprocessing": {"enabled": True, "debug": False}}
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         result = pipeline.process("/nonexistent/image.png")
         assert result.steps[0].success is False
         assert result.steps[0].error is not None
 
-    def test_pipeline_debug_saves_intermediates(self, test_image_file, tmp_path):
+    def test_pipeline_debug_saves_intermediates(self, test_image_file):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
-        images_dir = tmp_path / "images"
-        images_dir.mkdir()
         config = {
             "preprocessing": {
                 "enabled": True,
@@ -592,15 +592,13 @@ class TestPreProcessingPipeline:
                 "grayscale": {"enabled": True},
             }
         }
-        pipeline = PreProcessingPipeline(config, images_dir)
+        pipeline = PreProcessingPipeline(config)
         result = pipeline.process(test_image_file)
-        debug_dir = images_dir / ".preprocess"
-        assert debug_dir.exists()
         assert any(
             s.output_path is not None for s in result.steps if s.enabled and s.success
         )
 
-    def test_pipeline_disabled_step_skipped(self, test_image_file, tmp_path):
+    def test_pipeline_disabled_step_skipped(self, test_image_file):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = {
@@ -613,15 +611,16 @@ class TestPreProcessingPipeline:
                 "binarize": {"enabled": True, "method": "otsu"},
             }
         }
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         result = pipeline.process(test_image_file)
         for step in result.steps:
             if step.step_name in ("upscale", "denoise"):
                 assert step.enabled is False
             else:
                 assert step.enabled is True
+        assert result.output_path is not None
 
-    def test_pipeline_step_execution_order(self, test_image_file, tmp_path):
+    def test_pipeline_step_execution_order(self, test_image_file):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
 
         config = {
@@ -633,7 +632,8 @@ class TestPreProcessingPipeline:
                 "binarize": {"enabled": True, "method": "otsu"},
             }
         }
-        pipeline = PreProcessingPipeline(config, tmp_path)
+        pipeline = PreProcessingPipeline(config)
         result = pipeline.process(test_image_file)
         step_names = [s.step_name for s in result.steps]
         assert step_names.index("grayscale") < step_names.index("binarize")
+        assert result.output_path is not None

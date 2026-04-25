@@ -6,6 +6,7 @@ from ocr_manga_title.engine.easyocr_model import EasyOCRModel
 from ocr_manga_title.engine.glm_ocr_model import GLMOCRModel
 from ocr_manga_title.engine.paddle_model import PaddleModel
 from ocr_manga_title.engine.tesseract_model import TesseractModel
+from ocr_manga_title.exceptions import ModelNotAvailableError
 from ocr_manga_title.schemas import ModelConfig, OCRResult
 
 
@@ -127,24 +128,46 @@ class TestTesseractModel:
         assert "--oem 1" in model._tess_config
 
 
-class TestStubs:
-    def test_paddle_stub(self):
+class TestPaddleBasic:
+    def test_paddle_name(self):
         model = PaddleModel(ModelConfig(name="paddle"))
         assert model.name == "paddle"
+
+    def test_paddle_not_available_without_package(self):
+        model = PaddleModel(ModelConfig(name="paddle"))
         assert model.is_available is False
-        with pytest.raises(NotImplementedError):
+
+    def test_paddle_run_raises_when_not_available(self):
+        model = PaddleModel(ModelConfig(name="paddle"))
+        with pytest.raises(ModelNotAvailableError):
             model.run("test.png")
 
-    def test_easyocr_stub(self):
+
+class TestEasyOCRBasic:
+    def test_easyocr_name(self):
         model = EasyOCRModel(ModelConfig(name="easyocr"))
         assert model.name == "easyocr"
+
+    def test_easyocr_not_available_without_package(self):
+        model = EasyOCRModel(ModelConfig(name="easyocr"))
         assert model.is_available is False
-        with pytest.raises(NotImplementedError):
+
+    def test_easyocr_run_raises_when_not_available(self):
+        model = EasyOCRModel(ModelConfig(name="easyocr"))
+        with pytest.raises(ModelNotAvailableError):
             model.run("test.png")
 
-    def test_glm_ocr_stub(self):
+
+class TestGLMOCRBasic:
+    def test_glm_ocr_name(self):
         model = GLMOCRModel(ModelConfig(name="glm_ocr"))
         assert model.name == "glm_ocr"
+
+    def test_glm_ocr_not_available_without_endpoint(self):
+        model = GLMOCRModel(ModelConfig(name="glm_ocr"))
         assert model.is_available is False
-        with pytest.raises(NotImplementedError):
+
+    def test_glm_ocr_run_raises_when_not_available(self):
+        model = GLMOCRModel(ModelConfig(name="glm_ocr"))
+        with pytest.raises(ModelNotAvailableError):
             model.run("test.png")

@@ -1,19 +1,16 @@
 """Tests for the preprocessing playground API endpoints."""
 
-import base64
 import io
+import json
 
-import pytest
 from PIL import Image
 
 
-def _make_png_data_url(width: int = 10, height: int = 10) -> str:
-    """Create a tiny white PNG image encoded as a base64 data-URL."""
+def _make_png_bytes(width: int = 10, height: int = 10) -> bytes:
     img = Image.new("RGB", (width, height), (255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{b64}"
+    return buf.getvalue()
 
 
 async def test_list_steps(client):
@@ -39,12 +36,11 @@ async def test_list_steps_has_param_descriptors(client):
 
 
 async def test_preview_step_grayscale(client):
-    data_url = _make_png_data_url()
-    response = await client.post("/api/v1/preprocess/preview/step", json={
-        "image": data_url,
-        "step_name": "grayscale",
-        "params": {},
-    })
+    response = await client.post(
+        "/api/v1/preprocess/preview/step",
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={"step_name": "grayscale", "params": "{}"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -54,12 +50,14 @@ async def test_preview_step_grayscale(client):
 
 
 async def test_preview_step_with_params(client):
-    data_url = _make_png_data_url()
-    response = await client.post("/api/v1/preprocess/preview/step", json={
-        "image": data_url,
-        "step_name": "denoise",
-        "params": {"method": "gaussian", "strength": "light"},
-    })
+    response = await client.post(
+        "/api/v1/preprocess/preview/step",
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={
+            "step_name": "denoise",
+            "params": '{"method": "gaussian", "strength": "light"}',
+        },
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -67,36 +65,37 @@ async def test_preview_step_with_params(client):
 
 
 async def test_preview_step_unknown_step(client):
-    data_url = _make_png_data_url()
-    response = await client.post("/api/v1/preprocess/preview/step", json={
-        "image": data_url,
-        "step_name": "nonexistent",
-        "params": {},
-    })
+    response = await client.post(
+        "/api/v1/preprocess/preview/step",
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={"step_name": "nonexistent", "params": "{}"},
+    )
     assert response.status_code == 400
 
 
 async def test_preview_step_invalid_image(client):
-    response = await client.post("/api/v1/preprocess/preview/step", json={
-        "image": "not-valid-base64",
-        "step_name": "grayscale",
-        "params": {},
-    })
+    response = await client.post(
+        "/api/v1/preprocess/preview/step",
+        files={"file": ("image.png", b"not-valid-base64", "image/png")},
+        data={"step_name": "grayscale", "params": "{}"},
+    )
     assert response.status_code == 400
 
 
 async def test_preview_pipeline_all_steps(client):
-    data_url = _make_png_data_url()
-    response = await client.post("/api/v1/preprocess/preview/pipeline", json={
-        "image": data_url,
-        "steps": {
-            "roi": {"enabled": False},
-            "grayscale": {},
-            "upscale": {"method": "cubic", "scale_factor": 2},
-            "denoise": {"method": "gaussian", "strength": "light"},
-            "binarize": {"method": "otsu"},
+    response = await client.post(
+        "/api/v1/preprocess/preview/pipeline",
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={
+            "steps": json.dumps({
+                "roi": {"enabled": False},
+                "grayscale": {},
+                "upscale": {"method": "cubic", "scale_factor": 2},
+                "denoise": {"method": "gaussian", "strength": "light"},
+                "binarize": {"method": "otsu"},
+            }),
         },
-    })
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data["steps"]) == 5
@@ -109,17 +108,19 @@ async def test_preview_pipeline_all_steps(client):
 
 
 async def test_preview_pipeline_disabled_steps(client):
-    data_url = _make_png_data_url()
-    response = await client.post("/api/v1/preprocess/preview/pipeline", json={
-        "image": data_url,
-        "steps": {
-            "roi": {"enabled": False},
-            "grayscale": {"enabled": False},
-            "upscale": {"enabled": False},
-            "denoise": {"enabled": False},
-            "binarize": {"enabled": False},
+    response = await client.post(
+        "/api/v1/preprocess/preview/pipeline",
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={
+            "steps": json.dumps({
+                "roi": {"enabled": False},
+                "grayscale": {"enabled": False},
+                "upscale": {"enabled": False},
+                "denoise": {"enabled": False},
+                "binarize": {"enabled": False},
+            }),
         },
-    })
+    )
     assert response.status_code == 200
     data = response.json()
     assert all(not s["enabled"] for s in data["steps"])
@@ -127,11 +128,11 @@ async def test_preview_pipeline_disabled_steps(client):
 
 
 async def test_preview_pipeline_empty_config(client):
-    data_url = _make_png_data_url()
-    response = await client.post("/api/v1/preprocess/preview/pipeline", json={
-        "image": data_url,
-        "steps": {},
-    })
+    response = await client.post(
+        "/api/v1/preprocess/preview/pipeline",
+        files={"file": ("image.png", _make_png_bytes(), "image/png")},
+        data={"steps": "{}"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data["steps"]) == 5

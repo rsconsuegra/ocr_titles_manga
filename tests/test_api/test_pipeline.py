@@ -49,8 +49,98 @@ async def test_trigger_pipeline_already_completed(client, db_engine):
         run_id = str(run.id)
         await session.commit()
 
+    with patch("ocr_manga_title.workers.ocr_worker.process_pipeline_run") as mock_actor:
+        mock_actor.send = lambda *a, **kw: None
+        response = await client.post(f"/api/v1/pipeline/run/{run_id}")
+
+    assert response.status_code == 200
+
+
+async def test_trigger_pipeline_processing_rejected(client, db_engine):
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        run = await create_pipeline_run(
+            session=session,
+            input_image_path="test.png",
+            source_platform="manual",
+            status="processing",
+        )
+        run_id = str(run.id)
+        await session.commit()
+
     response = await client.post(f"/api/v1/pipeline/run/{run_id}")
     assert response.status_code == 409
+
+
+async def test_cancel_pipeline_run_pending(client, db_engine):
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        run = await create_pipeline_run(
+            session=session,
+            input_image_path="test.png",
+            source_platform="manual",
+            status="pending",
+        )
+        run_id = str(run.id)
+        await session.commit()
+
+    response = await client.post(f"/api/v1/pipeline/runs/{run_id}/cancel")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "Pipeline run cancelled"
+    assert data["run_id"] == run_id
+
+    detail = await client.get(f"/api/v1/pipeline/runs/{run_id}")
+    assert detail.json()["status"] == "cancelled"
+
+
+async def test_cancel_pipeline_run_completed_rejected(client, db_engine):
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        run = await create_pipeline_run(
+            session=session,
+            input_image_path="test.png",
+            source_platform="manual",
+            status="completed",
+        )
+        run_id = str(run.id)
+        await session.commit()
+
+    response = await client.post(f"/api/v1/pipeline/runs/{run_id}/cancel")
+    assert response.status_code == 409
+
+
+async def test_cancel_pipeline_run_not_found(client):
+    random_id = str(uuid.uuid4())
+    response = await client.post(f"/api/v1/pipeline/runs/{random_id}/cancel")
+    assert response.status_code == 404
+
+
+async def test_retry_cancelled_run(client, db_engine):
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        run = await create_pipeline_run(
+            session=session,
+            input_image_path="test.png",
+            source_platform="manual",
+            status="cancelled",
+        )
+        run_id = str(run.id)
+        await session.commit()
+
+    with patch("ocr_manga_title.workers.ocr_worker.process_pipeline_run") as mock_actor:
+        mock_actor.send = lambda *a, **kw: None
+        response = await client.post(f"/api/v1/pipeline/run/{run_id}")
+
+    assert response.status_code == 200
 
 
 async def test_list_runs_empty(client):

@@ -16,10 +16,7 @@ from ocr_manga_title.schemas import (
 def _make_engine(
     tmp_path, models_config=None, mock_models=True, preprocess_config=None
 ):
-    images_dir = tmp_path / "images"
-    images_dir.mkdir(exist_ok=True)
     config = AppConfig(
-        images_path=images_dir,
         openrouter=OpenRouterConfig(
             api_key="sk-or-test", default_model="test-model", base_url="http://test"
         ),
@@ -565,7 +562,7 @@ class TestOCREnginePreprocessing:
         engine.process(blank_image)
         call_arg = mock_model.run.call_args[0][0]
         assert call_arg != blank_image
-        assert ".preprocess" in call_arg
+        assert "manga_ocr_preprocess" in call_arg
 
     def test_engine_backward_compat_no_preprocess_config(self, tmp_path):
         with patch(
