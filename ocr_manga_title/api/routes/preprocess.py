@@ -1,20 +1,19 @@
 """Preprocessing playground API routes."""
 
+import json
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from ocr_manga_title.api.schemas.preprocess import (
     ExportPipelineRequest,
     PipelineStepResult,
-    PreviewPipelineRequest,
     PreviewPipelineResponse,
-    PreviewStepRequest,
     PreviewStepResponse,
     StepDescriptorResponse,
 )
 from ocr_manga_title.preprocess.registry import STEP_ORDER, STEP_REGISTRY, get_all_steps
-from ocr_manga_title.services.image import decode_image, encode_image
+from ocr_manga_title.services.image import decode_bytes, encode_image
 from ocr_manga_title.services.preprocess import get_step_instance
 
 router = APIRouter()
@@ -36,24 +35,36 @@ async def list_steps():
 
 
 @router.post("/preview/step", response_model=PreviewStepResponse)
-async def preview_step(body: PreviewStepRequest):
+async def preview_step(
+    file: UploadFile = File(...),
+    step_name: str = Form(...),
+    params: str = Form("{}"),
+):
     """Preview a single preprocessing step applied to the given image."""
-    if body.step_name not in STEP_REGISTRY:
-        raise HTTPException(status_code=400, detail=f"Unknown step: {body.step_name}")
+    if step_name not in STEP_REGISTRY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown step: {step_name}",
+        )
+
+    parsed_params = json.loads(params)
 
     try:
-        image = decode_image(body.image)
+        raw = await file.read()
+        image = decode_bytes(raw)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {e}") from e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {e}"
+        ) from e
 
-    step = get_step_instance(body.step_name)
+    step = get_step_instance(step_name)
     start = time.monotonic()
     try:
-        result_img, metadata = step.process(image, body.params)
+        result_img, metadata = step.process(image, parsed_params)
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return PreviewStepResponse(
             image=encode_image(result_img),
-            step_name=body.step_name,
+            step_name=step_name,
             metadata=metadata,
             processing_time_ms=elapsed_ms,
             success=True,
@@ -62,7 +73,7 @@ async def preview_step(body: PreviewStepRequest):
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return PreviewStepResponse(
             image=encode_image(image),
-            step_name=body.step_name,
+            step_name=step_name,
             metadata={},
             processing_time_ms=elapsed_ms,
             success=False,
@@ -71,18 +82,26 @@ async def preview_step(body: PreviewStepRequest):
 
 
 @router.post("/preview/pipeline", response_model=PreviewPipelineResponse)
-async def preview_pipeline(body: PreviewPipelineRequest):
+async def preview_pipeline(
+    file: UploadFile = File(...),
+    steps: str = Form("{}"),
+):
     """Preview the full preprocessing pipeline, returning an image after each step."""
+    parsed_steps = json.loads(steps)
+
     try:
-        current_image = decode_image(body.image)
+        raw = await file.read()
+        current_image = decode_bytes(raw)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {e}") from e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {e}"
+        ) from e
 
     start_total = time.monotonic()
     results: list[PipelineStepResult] = []
 
     for step_name in STEP_ORDER:
-        step_config = body.steps.get(step_name, {})
+        step_config = parsed_steps.get(step_name, {})
         enabled = (
             step_config.pop("enabled", True) if isinstance(step_config, dict) else True
         )

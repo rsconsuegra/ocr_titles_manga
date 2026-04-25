@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
@@ -16,8 +17,13 @@ from ocr_manga_title.db.crud import (
     list_pipeline_runs,
     update_batch_progress,
 )
+from ocr_manga_title.db.enums import RunStatus
+from ocr_manga_title.db.models import OCRResult
 
 router = APIRouter()
+
+_RETRYABLE_STATUSES = {s.value for s in RunStatus} - {RunStatus.PROCESSING}
+_CANCELABLE_STATUSES = {RunStatus.PENDING, RunStatus.PROCESSING}
 
 
 @router.post("/run/{run_id}")
@@ -25,20 +31,23 @@ async def trigger_pipeline(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """Enqueue a pending or failed pipeline run for processing."""
+    """Enqueue a pending, failed, completed, or cancelled pipeline run for processing."""
     run = await get_pipeline_run(session=db, run_id=run_id)
     if not run:
-        raise HTTPException(status_code=404, detail="Pipeline run not found")
-    if run.status not in ("pending", "failed"):
         raise HTTPException(
-            status_code=409, detail=f"Run cannot be retried (status: {run.status})"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
+        )
+    if run.status not in _RETRYABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run cannot be retried (status: {run.status})",
         )
 
-    if run.status == "failed":
-        run.status = "pending"
+    if run.status != RunStatus.PENDING:
+        run.status = RunStatus.PENDING
         run.error_message = None
         run.completed_at = None
-        run.ocr_results.clear()
+        await db.execute(delete(OCRResult).where(OCRResult.pipeline_run_id == run.id))
         if run.batch_run_id:
             await update_batch_progress(db, run.batch_run_id)
 
@@ -47,6 +56,36 @@ async def trigger_pipeline(
     process_pipeline_run.send(str(run_id))
 
     return {"message": "Pipeline run enqueued", "run_id": str(run_id)}
+
+
+@router.post("/runs/{run_id}/cancel")
+async def cancel_pipeline_run(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel a pending or processing pipeline run."""
+    from datetime import UTC, datetime
+
+    run = await get_pipeline_run(session=db, run_id=run_id)
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
+        )
+    if run.status not in _CANCELABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run cannot be cancelled (status: {run.status})",
+        )
+
+    run.status = RunStatus.CANCELLED
+    run.completed_at = datetime.now(UTC).replace(tzinfo=None)
+    await db.commit()
+
+    if run.batch_run_id:
+        await update_batch_progress(db, run.batch_run_id)
+        await db.commit()
+
+    return {"message": "Pipeline run cancelled", "run_id": str(run_id)}
 
 
 @router.get("/runs", response_model=PaginatedResponse[PipelineRunResponse])
@@ -74,5 +113,7 @@ async def get_run_detail(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Retrieve a pipeline run with its OCR and post-processing results."""
     run = await get_pipeline_run_detail(session=db, run_id=run_id)
     if not run:
-        raise HTTPException(status_code=404, detail="Pipeline run not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
+        )
     return PipelineRunDetailResponse.model_validate(run)

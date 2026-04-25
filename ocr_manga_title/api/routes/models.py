@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +30,10 @@ async def update_model(
 ):
     """Update configuration for a specific OCR model."""
     if model_name not in MODEL_REGISTRY:
-        raise HTTPException(status_code=404, detail=f"Model not found: {model_name}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model not found: {model_name}",
+        )
 
     updated = await update_model_config(
         session=db,
@@ -39,6 +42,7 @@ async def update_model(
     )
     if not updated:
         raise HTTPException(
-            status_code=404, detail=f"Model config not found: {model_name}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model config not found: {model_name}",
         )
     return ModelConfigResponse.model_validate(updated)

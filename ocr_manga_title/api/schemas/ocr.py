@@ -33,7 +33,10 @@ class ModelDescriptorResponse(BaseModel):
 
 
 class OCRRunRequest(BaseModel):
-    """Request body for running a single OCR model."""
+    """Request body for running a single OCR model.
+
+    Deprecated: kept for backward compat. New code uses multipart form fields.
+    """
 
     image: str
     model_name: str
@@ -75,7 +78,10 @@ class OCRExportRequest(BaseModel):
 
 
 class QuickRunRequest(BaseModel):
-    """Request body for the stateless quick-run pipeline."""
+    """Request body for the stateless quick-run pipeline.
+
+    Deprecated: kept for backward compat. New code uses multipart form fields.
+    """
 
     image: str
     preprocess_steps: dict[str, dict[str, Any]] = {}

@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
@@ -27,7 +27,9 @@ async def _resolve_profile_snapshot(db: AsyncSession, profile_id: uuid.UUID | No
 
     profile = await get_profile(db, profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+        )
     return build_run_config_snapshot(profile)
 
 
@@ -39,10 +41,14 @@ async def upload_images(
 ):
     if len(files) > MAX_FILES:
         raise HTTPException(
-            status_code=400, detail=f"Maximum {MAX_FILES} files allowed"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum {MAX_FILES} files allowed",
         )
     if len(files) == 0:
-        raise HTTPException(status_code=422, detail="At least one file required")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one file required",
+        )
 
     config_snapshot = await _resolve_profile_snapshot(db, profile_id)
     _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -52,14 +58,15 @@ async def upload_images(
         ext = Path(file.filename or "").suffix.lower()
         if ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid format: {ext}. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
             )
 
         content = await file.read()
         if len(content) > MAX_FILE_SIZE:
             raise HTTPException(
-                status_code=400, detail=f"File too large: {file.filename} (max 20MB)"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File too large: {file.filename} (max 20MB)",
             )
 
         file_id = uuid.uuid4()
@@ -82,5 +89,7 @@ async def get_input(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Retrieve a pipeline run by ID."""
     run = await get_pipeline_run(session=db, run_id=run_id)
     if not run:
-        raise HTTPException(status_code=404, detail="Pipeline run not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
+        )
     return PipelineRunResponse.model_validate(run)

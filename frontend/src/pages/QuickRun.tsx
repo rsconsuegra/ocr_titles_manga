@@ -17,6 +17,7 @@ export default function QuickRun() {
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string>("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [useCustomPreprocess, setUseCustomPreprocess] = useState(false);
   const [useCustomOcr, setUseCustomOcr] = useState(false);
   const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>({});
@@ -44,6 +45,7 @@ export default function QuickRun() {
     if (!file) return;
     const dataUrl = await readFile(file);
     setImageDataUrl(dataUrl);
+    setImageFile(file);
     setResult(null);
   }
 
@@ -117,36 +119,40 @@ export default function QuickRun() {
     setEnableLlm(profile.enable_llm);
   }
 
+  function buildPreprocessSteps(): Record<string, Record<string, unknown>> | undefined {
+    if (!useCustomPreprocess) return undefined;
+    const ppSteps: Record<string, Record<string, unknown>> = {};
+    for (const step of preprocessSteps) {
+      const enabled = preprocessEnabled[step.name] ?? false;
+      if (enabled) {
+        ppSteps[step.name] = { ...preprocessConfig[step.name], enabled: true };
+      }
+    }
+    return ppSteps;
+  }
+
+  function buildOcrModelsConfig(): Record<string, Record<string, unknown>> | undefined {
+    if (!useCustomOcr) return undefined;
+    const ocrModelsConfig: Record<string, Record<string, unknown>> = {};
+    for (const m of ocrModels) {
+      const enabled = ocrEnabled[m.name] ?? false;
+      if (enabled) {
+        ocrModelsConfig[m.name] = { ...ocrConfig[m.name], enabled: true };
+      }
+    }
+    return ocrModelsConfig;
+  }
+
   async function handleRun() {
-    if (!imageDataUrl) return;
+    if (!imageFile) return;
     setLoading(true);
     setError(null);
     setResult(null);
 
-    const ppSteps: Record<string, Record<string, unknown>> = {};
-    if (useCustomPreprocess) {
-      for (const step of preprocessSteps) {
-        const enabled = preprocessEnabled[step.name] ?? false;
-        if (enabled) {
-          ppSteps[step.name] = { ...preprocessConfig[step.name], enabled: true };
-        }
-      }
-    }
-
-    const ocrModelsConfig: Record<string, Record<string, unknown>> = {};
-    if (useCustomOcr) {
-      for (const m of ocrModels) {
-        const enabled = ocrEnabled[m.name] ?? false;
-        if (enabled) {
-          ocrModelsConfig[m.name] = { ...ocrConfig[m.name], enabled: true };
-        }
-      }
-    }
-
     try {
-      const resp = await quickRun(imageDataUrl, {
-        preprocessSteps: useCustomPreprocess ? ppSteps : undefined,
-        ocrModels: useCustomOcr ? ocrModelsConfig : undefined,
+      const resp = await quickRun(imageFile, {
+        preprocessSteps: buildPreprocessSteps(),
+        ocrModels: buildOcrModelsConfig(),
         enableLlm,
         profileId: selectedProfileId || undefined,
       });
@@ -274,7 +280,7 @@ export default function QuickRun() {
             Post-process with LLM
           </label>
 
-          <DsoButton onClick={handleRun} disabled={loading || !imageDataUrl} className="w-full">
+          <DsoButton onClick={handleRun} disabled={loading || !imageFile} className="w-full">
             {loading ? "Running..." : "Run Pipeline"}
           </DsoButton>
         </div>

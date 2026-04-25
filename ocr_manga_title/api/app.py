@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+import asyncio
+import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -23,13 +25,38 @@ from ocr_manga_title.exceptions import (
     ModelNotAvailableError,
     PermanentError,
 )
-from ocr_manga_title.settings import CORS_ORIGINS
+from ocr_manga_title.settings import CACHE_SWEEPER_INTERVAL_SECONDS, CORS_ORIGINS
+
+logger = logging.getLogger(__name__)
+
+
+async def _cache_sweeper():
+    from ocr_manga_title.db.session import async_session_factory
+    from ocr_manga_title.services.cache import evict_expired
+
+    try:
+        while True:
+            await asyncio.sleep(CACHE_SWEEPER_INTERVAL_SECONDS)
+            try:
+                async with async_session_factory() as session:
+                    await evict_expired(session)
+                    await session.commit()
+            except Exception as e:
+                logger.warning("Cache sweeper error: %s", e)
+    except asyncio.CancelledError:
+        pass
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application startup/shutdown lifecycle."""
+    task = asyncio.create_task(_cache_sweeper())
     yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 def create_app() -> FastAPI:
@@ -45,7 +72,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(ConfigurationError)
     async def configuration_error_handler(request: Request, exc: ConfigurationError):
         return JSONResponse(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": str(exc), "error_code": "configuration_error"},
         )
 
@@ -54,28 +81,28 @@ def create_app() -> FastAPI:
         request: Request, exc: ModelNotAvailableError
     ):
         return JSONResponse(
-            status_code=503,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": str(exc), "error_code": "model_not_available"},
         )
 
     @app.exception_handler(LLMExtractionError)
     async def llm_extraction_error_handler(request: Request, exc: LLMExtractionError):
         return JSONResponse(
-            status_code=502,
+            status_code=status.HTTP_502_BAD_GATEWAY,
             content={"detail": str(exc), "error_code": "llm_extraction_error"},
         )
 
     @app.exception_handler(PermanentError)
     async def permanent_error_handler(request: Request, exc: PermanentError):
         return JSONResponse(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             content={"detail": str(exc), "error_code": "permanent_error"},
         )
 
     @app.exception_handler(MangaOCRError)
     async def manga_ocr_error_handler(request: Request, exc: MangaOCRError):
         return JSONResponse(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": str(exc), "error_code": "internal_error"},
         )
 

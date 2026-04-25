@@ -4,9 +4,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: manga_ocr
-      POSTGRES_PASSWORD: manga_ocr_dev
-      POSTGRES_DB: manga_ocr
+      POSTGRES_USER: ${POSTGRES_USER:-manga_ocr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-manga_ocr_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-manga_ocr}
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
@@ -14,9 +14,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6379:6379"
     healthcheck:
@@ -24,55 +30,96 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   migrate:
-    build: .
-    command: ["uv", "run", "alembic", "upgrade", "head"]
-    environment:
-      DATABASE_URL: postgresql+asyncpg://manga_ocr:manga_ocr_dev@postgres:5432/manga_ocr
+    build:
+      context: .
+      args:
+        TORCH_VARIANT: ${TORCH_VARIANT:-cpu}
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
-    build: .
+    build:
+      context: .
+      args:
+        TORCH_VARIANT: ${TORCH_VARIANT:-cpu}
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://manga_ocr:manga_ocr_dev@postgres:5432/manga_ocr
-      REDIS_URL: redis://redis:6379
+    env_file: .env
     volumes:
       - ./uploads:/app/uploads
+      - ocr_cache:/app/cache
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/pipeline/runs?limit=1')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
-    build: .
-    command: ["uv", "run", "dramatiq", "ocr_manga_title.workers.ocr_worker"]
-    environment:
-      DATABASE_URL: postgresql+asyncpg://manga_ocr:manga_ocr_dev@postgres:5432/manga_ocr
-      REDIS_URL: redis://redis:6379
+    build:
+      context: .
+      args:
+        TORCH_VARIANT: ${TORCH_VARIANT:-cpu}
+    command: ["dramatiq", "ocr_manga_title.workers.ocr_worker"]
+    env_file: .env
     volumes:
       - ./uploads:/app/uploads
+      - ocr_cache:/app/cache
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
       context: frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     ports:
-      - "5173:5173"
-    environment:
-      VITE_API_TARGET: http://api:8000
+      - "5173:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:
+  ocr_cache:

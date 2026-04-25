@@ -3,7 +3,7 @@ import io
 import uuid
 from datetime import UTC
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func as sa_func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from ocr_manga_title.api.schemas.catalog import (
 )
 from ocr_manga_title.api.schemas.pipeline import PaginatedResponse
 from ocr_manga_title.db.crud import get_catalog_entry, update_catalog_entry
+from ocr_manga_title.db.enums import CatalogStatus
 from ocr_manga_title.db.models import CatalogEntry
 
 router = APIRouter()
@@ -107,7 +108,9 @@ async def get_single_catalog(entry_id: uuid.UUID, db: AsyncSession = Depends(get
     """Retrieve a single catalog entry by ID."""
     entry = await get_catalog_entry(session=db, entry_id=entry_id)
     if not entry:
-        raise HTTPException(status_code=404, detail="Catalog entry not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Catalog entry not found"
+        )
     return CatalogEntryResponse.model_validate(entry)
 
 
@@ -122,13 +125,15 @@ async def update_catalog(
 
     entry = await get_catalog_entry(session=db, entry_id=entry_id)
     if not entry:
-        raise HTTPException(status_code=404, detail="Catalog entry not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Catalog entry not found"
+        )
 
     updates = {}
     if body.status is not None:
-        if body.status not in ("auto_confirmed", "needs_review", "rejected"):
+        if body.status not in (s.value for s in CatalogStatus):
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid status. Must be: auto_confirmed, needs_review, rejected",
             )
         updates["status"] = body.status

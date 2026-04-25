@@ -10,25 +10,34 @@ export async function getPreprocessSteps(): Promise<StepDescriptor[]> {
 }
 
 export async function previewStep(
-  image: string,
+  file: File,
   stepName: string,
   params: Record<string, unknown> = {},
 ): Promise<PreviewStepResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("step_name", stepName);
+  if (Object.keys(params).length > 0) {
+    formData.append("params", JSON.stringify(params));
+  }
   return apiFetch<PreviewStepResponse>("/api/v1/preprocess/preview/step", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image, step_name: stepName, params }),
+    body: formData,
   });
 }
 
 export async function previewPipeline(
-  image: string,
+  file: File,
   steps: Record<string, Record<string, unknown>> = {},
 ): Promise<PreviewPipelineResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (Object.keys(steps).length > 0) {
+    formData.append("steps", JSON.stringify(steps));
+  }
   return apiFetch<PreviewPipelineResponse>("/api/v1/preprocess/preview/pipeline", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image, steps }),
+    body: formData,
   });
 }
 

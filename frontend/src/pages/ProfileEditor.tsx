@@ -77,6 +77,24 @@ export default function ProfileEditor() {
       .finally(() => setPageLoading(false));
   }, [id, isEdit]);
 
+  function buildPreprocessPayload(): Record<string, Record<string, unknown>> {
+    const ppSteps: Record<string, Record<string, unknown>> = {};
+    for (const step of preprocessSteps) {
+      const enabled = preprocessEnabled[step.name] ?? false;
+      ppSteps[step.name] = { ...preprocessConfig[step.name], enabled };
+    }
+    return ppSteps;
+  }
+
+  function buildOcrPayload(): Record<string, Record<string, unknown>> {
+    const ocrModelsData: Record<string, Record<string, unknown>> = {};
+    for (const m of ocrModels) {
+      const enabled = ocrEnabled[m.name] ?? false;
+      ocrModelsData[m.name] = { ...ocrConfig[m.name], enabled };
+    }
+    return ocrModelsData;
+  }
+
   async function handleSave() {
     if (!name.trim()) {
       setError("Name is required");
@@ -85,37 +103,20 @@ export default function ProfileEditor() {
     setLoading(true);
     setError(null);
 
-    const ppSteps: Record<string, Record<string, unknown>> = {};
-    for (const step of preprocessSteps) {
-      const enabled = preprocessEnabled[step.name] ?? false;
-      ppSteps[step.name] = { ...preprocessConfig[step.name], enabled };
-    }
-
-    const ocrModelsData: Record<string, Record<string, unknown>> = {};
-    for (const m of ocrModels) {
-      const enabled = ocrEnabled[m.name] ?? false;
-      ocrModelsData[m.name] = { ...ocrConfig[m.name], enabled };
-    }
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      preprocess_steps: buildPreprocessPayload(),
+      ocr_models: buildOcrPayload(),
+      enable_llm: enableLlm,
+      is_default: isDefault,
+    };
 
     try {
       if (isEdit && id) {
-        await updateProfile(id, {
-          name: name.trim(),
-          description: description.trim() || null,
-          preprocess_steps: ppSteps,
-          ocr_models: ocrModelsData,
-          enable_llm: enableLlm,
-          is_default: isDefault,
-        });
+        await updateProfile(id, { ...payload, description: description.trim() || null });
       } else {
-        await createProfile({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          preprocess_steps: ppSteps,
-          ocr_models: ocrModelsData,
-          enable_llm: enableLlm,
-          is_default: isDefault,
-        });
+        await createProfile(payload);
       }
       navigate("/profiles");
     } catch (e) {

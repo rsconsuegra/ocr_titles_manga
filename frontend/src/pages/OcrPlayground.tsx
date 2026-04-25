@@ -11,6 +11,7 @@ export default function OcrPlayground() {
   const [models, setModels] = useState<ModelDescriptorResponse[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [imageDataUrl, setImageDataUrl] = useState<string>("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [params, setParams] = useState<Record<string, Record<string, unknown>>>({});
   const [enableLlm, setEnableLlm] = useState(false);
   const [result, setResult] = useState<OCRRunResponse | null>(null);
@@ -36,16 +37,17 @@ export default function OcrPlayground() {
     if (!file) return;
     const dataUrl = await readFile(file);
     setImageDataUrl(dataUrl);
+    setImageFile(file);
     setResult(null);
   }
 
   async function handleRun() {
-    if (!imageDataUrl || !selectedModel) return;
+    if (!imageFile || !selectedModel) return;
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const resp = await runOCR(imageDataUrl, selectedModel, params[selectedModel] || {}, enableLlm);
+      const resp = await runOCR(imageFile, selectedModel, params[selectedModel] || {}, enableLlm);
       setResult(resp);
     } catch (e) {
       setError(e instanceof Error ? e.message : "OCR run failed");
@@ -133,7 +135,7 @@ export default function OcrPlayground() {
             Post-process with LLM
           </label>
 
-          <DsoButton onClick={handleRun} disabled={loading || !imageDataUrl || !selectedModel} className="w-full">
+          <DsoButton onClick={handleRun} disabled={loading || !imageFile || !selectedModel} className="w-full">
             {loading ? "Running OCR..." : "Run OCR"}
           </DsoButton>
         </div>

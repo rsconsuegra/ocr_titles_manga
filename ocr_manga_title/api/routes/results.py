@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,5 +70,8 @@ async def override_result(
         body.model_dump(exclude_none=True),
     )
     if not pp_result:
-        raise HTTPException(status_code=404, detail="Post-processing result not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post-processing result not found",
+        )
     return PostProcessingResultResponse.model_validate(pp_result)

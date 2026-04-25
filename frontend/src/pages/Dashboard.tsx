@@ -16,6 +16,7 @@ const statusVariant = {
   processing: "processing" as const,
   completed: "completed" as const,
   failed: "failed" as const,
+  cancelled: "cancelled" as const,
 };
 
 export default function Dashboard() {
@@ -26,6 +27,7 @@ export default function Dashboard() {
     failed: number;
     processing: number;
     pending: number;
+    cancelled: number;
     success_rate: number;
   } | null>(null);
   const [recentRuns, setRecentRuns] = useState<PipelineRunResponse[]>([]);
@@ -60,6 +62,7 @@ export default function Dashboard() {
     { label: "TOTAL", value: stats.total, led: "led-off" },
     { label: "COMPLETED", value: stats.completed, led: "led-active" },
     { label: "FAILED", value: stats.failed, led: "led-amber" },
+    { label: "CANCELLED", value: stats.cancelled, led: "led-off" },
     { label: "PROCESSING", value: stats.processing, led: "led-active" },
     { label: "PENDING", value: stats.pending, led: "led-off" },
     { label: "SUCCESS", value: `${stats.success_rate}%`, led: "led-active" },

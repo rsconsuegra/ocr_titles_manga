@@ -35,6 +35,10 @@ export async function triggerPipeline(runId: string): Promise<{ message: string;
   return apiFetch("/api/v1/pipeline/run/" + runId, { method: "POST" });
 }
 
+export async function cancelRun(runId: string): Promise<{ message: string; run_id: string }> {
+  return apiFetch(`/api/v1/pipeline/runs/${runId}/cancel`, { method: "POST" });
+}
+
 export async function listRuns(params?: {
   status?: string;
   limit?: number;
@@ -69,14 +73,16 @@ export async function getDashboardStats(): Promise<{
   failed: number;
   processing: number;
   pending: number;
+  cancelled: number;
   success_rate: number;
 }> {
-  const [all, completed, failed, processing, pending] = await Promise.all([
+  const [all, completed, failed, processing, pending, cancelled] = await Promise.all([
     listRuns({ limit: 1 }),
     listRuns({ status: "completed", limit: 1 }),
     listRuns({ status: "failed", limit: 1 }),
     listRuns({ status: "processing", limit: 1 }),
     listRuns({ status: "pending", limit: 1 }),
+    listRuns({ status: "cancelled", limit: 1 }),
   ]);
   const totalFinished = completed.total + failed.total;
   return {
@@ -85,6 +91,7 @@ export async function getDashboardStats(): Promise<{
     failed: failed.total,
     processing: processing.total,
     pending: pending.total,
+    cancelled: cancelled.total,
     success_rate: totalFinished > 0 ? Math.round((completed.total / totalFinished) * 100) : 0,
   };
 }

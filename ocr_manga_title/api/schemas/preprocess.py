@@ -31,7 +31,10 @@ class StepDescriptorResponse(BaseModel):
 
 
 class PreviewStepRequest(BaseModel):
-    """Request body for single-step preview."""
+    """Request body for single-step preview.
+
+    Deprecated: kept for backward compat. New code uses multipart form fields.
+    """
 
     image: str
     step_name: str
@@ -50,7 +53,10 @@ class PreviewStepResponse(BaseModel):
 
 
 class PreviewPipelineRequest(BaseModel):
-    """Request body for full pipeline preview."""
+    """Request body for full pipeline preview.
+
+    Deprecated: kept for backward compat. New code uses multipart form fields.
+    """
 
     image: str
     steps: dict[str, dict[str, Any]] = {}

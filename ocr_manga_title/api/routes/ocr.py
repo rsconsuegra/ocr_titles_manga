@@ -1,8 +1,9 @@
 """OCR playground API routes."""
 
+import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,16 +12,15 @@ from ocr_manga_title.api.schemas.ocr import (
     ModelDescriptorResponse,
     ModelParamDescriptorResponse,
     OCRExportRequest,
-    OCRRunRequest,
     OCRRunResponse,
 )
 from ocr_manga_title.db.models import ModelConfig as ModelConfigDB
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
-from ocr_manga_title.services.image import decode_and_save
+from ocr_manga_title.services.cache import hash_bytes, run_ocr_cached
+from ocr_manga_title.services.image import save_bytes
 from ocr_manga_title.services.ocr import (
     check_model_availability,
     run_llm_extraction,
-    run_single_model,
 )
 
 router = APIRouter()
@@ -55,26 +55,52 @@ async def list_ocr_models(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/run", response_model=OCRRunResponse)
-async def run_ocr(body: OCRRunRequest):
+async def run_ocr(
+    file: UploadFile = File(...),
+    model_name: str = Form(...),
+    params: str = Form("{}"),
+    enable_llm: bool = Form(False),
+    db: AsyncSession = Depends(get_db),
+):
     """Run a single OCR model on the given image, optionally with LLM post-processing."""
-    descriptor = get_model(body.model_name)
+    descriptor = get_model(model_name)
     if not descriptor:
-        raise HTTPException(status_code=400, detail=f"Unknown model: {body.model_name}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown model: {model_name}",
+        )
+
+    parsed_params = json.loads(params)
+
+    try:
+        raw = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {e}"
+        ) from e
 
     tmp_path = None
     try:
         try:
-            tmp_path = decode_and_save(body.image)
+            tmp_path = save_bytes(raw)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid image: {e}") from e
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image: {e}",
+            ) from e
 
-        ocr_data = run_single_model(body.model_name, tmp_path, body.params)
+        image_hash = hash_bytes(raw)
+        ocr_data = await run_ocr_cached(
+            db, image_hash, model_name, tmp_path, parsed_params
+        )
 
         if ocr_data.error and "not available" in ocr_data.error:
-            raise HTTPException(status_code=400, detail=ocr_data.error)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=ocr_data.error
+            )
 
         llm_data = None
-        if body.enable_llm and ocr_data.raw_text.strip():
+        if enable_llm and ocr_data.raw_text.strip():
             llm_data = run_llm_extraction(ocr_data.raw_text)
 
         return OCRRunResponse(ocr=ocr_data, llm=llm_data)

@@ -28,6 +28,8 @@ class ProfileUpdateRequest(BaseModel):
 
 
 class ProfileResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
     id: uuid.UUID
     name: str
     description: str | None

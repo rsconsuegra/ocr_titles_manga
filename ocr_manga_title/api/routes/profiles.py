@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
@@ -22,7 +23,7 @@ from ocr_manga_title.db.crud import (
 router = APIRouter()
 
 
-@router.post("", response_model=ProfileResponse, status_code=201)
+@router.post("", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
 async def create_profile_endpoint(
     body: ProfileCreateRequest,
     db: AsyncSession = Depends(get_db),
@@ -37,12 +38,11 @@ async def create_profile_endpoint(
             enable_llm=body.enable_llm,
             is_default=body.is_default,
         )
-    except Exception as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(
-                status_code=409, detail=f"Profile '{body.name}' already exists"
-            ) from e
-        raise
+    except IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Profile '{body.name}' already exists",
+        ) from e
     return ProfileResponse.model_validate(profile)
 
 
@@ -68,7 +68,7 @@ async def get_profile_endpoint(
 ):
     profile = await get_profile(db, profile_id)
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
     return ProfileResponse.model_validate(profile)
 
 
@@ -81,17 +81,17 @@ async def update_profile_endpoint(
     kwargs = body.model_dump(exclude_none=True)
     profile = await update_profile(db, profile_id, **kwargs)
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
     return ProfileResponse.model_validate(profile)
 
 
-@router.delete("/{profile_id}", status_code=204)
+@router.delete("/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
 ):
     deleted = await delete_profile(db, profile_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
 
 
 @router.post("/{profile_id}/set-default", response_model=ProfileResponse)
@@ -100,5 +100,5 @@ async def set_default_profile_endpoint(
 ):
     profile = await update_profile(db, profile_id, is_default=True)
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
     return ProfileResponse.model_validate(profile)

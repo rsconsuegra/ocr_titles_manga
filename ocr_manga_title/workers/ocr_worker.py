@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from ocr_manga_title.config import load_config, load_preprocess_config
 from ocr_manga_title.db.crud import list_model_configs, update_batch_progress
+from ocr_manga_title.db.enums import RunStatus
 from ocr_manga_title.db.models import PipelineRun
 from ocr_manga_title.engine import OCREngine
 from ocr_manga_title.exceptions import PermanentError
 from ocr_manga_title.schemas import ModelConfig as ModelConfigSchema
+from ocr_manga_title.services.cache import hash_bytes, hash_config, put_ocr_result
 from ocr_manga_title.services.ocr import build_model_config
 from ocr_manga_title.services.pipeline import save_pipeline_results
 from ocr_manga_title.settings import (
@@ -27,6 +29,41 @@ from ocr_manga_title.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+MIN_MEMORY_MB = 512
+
+
+def _check_available_memory() -> int:
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (FileNotFoundError, ValueError, IndexError):
+        return -1
+    return -1
+
+
+def _require_memory(context: str) -> None:
+    available = _check_available_memory()
+    if available >= 0 and available < MIN_MEMORY_MB:
+        raise PermanentError(
+            f"Insufficient memory to {context}: "
+            f"{available}MB available, {MIN_MEMORY_MB}MB required. "
+            f"Increase Docker/Colima memory allocation."
+        )
+
+
+class RunCancelled(Exception):
+    pass
+
+
+async def _check_cancelled(session: AsyncSession, run_id: uuid.UUID) -> None:
+    stmt = select(PipelineRun).where(PipelineRun.id == run_id)
+    result = await session.execute(stmt)
+    run = result.scalar_one_or_none()
+    if run and run.status == RunStatus.CANCELLED:
+        raise RunCancelled(f"Run {run_id} was cancelled")
 
 
 def _run_async(coro):
@@ -95,9 +132,9 @@ async def _mark_run_failed(run_id: str, error_message: str) -> None:
             stmt = select(PipelineRun).where(PipelineRun.id == run_uuid)
             result = await session.execute(stmt)
             run = result.scalar_one_or_none()
-            if not run or run.status in ("completed", "failed"):
+            if not run or run.status in (RunStatus.COMPLETED, RunStatus.FAILED):
                 return
-            run.status = "failed"
+            run.status = RunStatus.FAILED
             run.error_message = error_message[:1000]
             run.completed_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()
@@ -112,7 +149,7 @@ async def _mark_run_failed(run_id: str, error_message: str) -> None:
     max_retries=3,
     min_backoff=10000,
     max_backoff=60000,
-    time_limit=300000,
+    time_limit=900000,
 )
 def process_pipeline_run(run_id: str):
     try:
@@ -141,7 +178,8 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
             logger.error("Pipeline run not found: %s", run_id)
             return
 
-        run.status = "processing"
+        await _check_cancelled(session, run_uuid)
+        run.status = RunStatus.PROCESSING
         await session.commit()
 
         try:
@@ -153,17 +191,21 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
 
             if run.preprocess_config:
                 snapshot = run.preprocess_config
+                ocr_models_snapshot = snapshot.get("ocr_models", {})
                 model_configs = _build_model_configs_from_snapshot(
-                    snapshot.get("ocr_models", {})
+                    ocr_models_snapshot
                 )
                 preprocess_raw = _build_preprocess_raw(
                     snapshot.get("preprocess_steps", {})
                 )
                 enable_llm = snapshot.get("enable_llm", True)
             else:
+                ocr_models_snapshot = {}
                 model_configs = await _get_model_configs(session)
                 preprocess_raw = load_preprocess_config(PREPROCESS_CONFIG_PATH)
                 enable_llm = True
+
+            _require_memory("load OCR models")
 
             engine = OCREngine(
                 config=app_config,
@@ -171,11 +213,37 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
                 preprocess_config=preprocess_raw,
             )
 
+            await _check_cancelled(session, run_uuid)
+
             pipeline_result = engine.process(run.input_image_path, enable_llm=enable_llm)
+
+            try:
+                image_hash = hash_bytes(image_path.read_bytes())
+                for ocr_res in pipeline_result.ocr_results:
+                    if ocr_res.error:
+                        continue
+                    override = dict(ocr_models_snapshot.get(ocr_res.model_name, {}))
+                    params = {k: v for k, v in override.items() if k != "enabled"}
+                    config_hash = hash_config({"model": ocr_res.model_name, **params})
+                    from ocr_manga_title.api.schemas.ocr import OCRResultData
+                    await put_ocr_result(
+                        session,
+                        image_hash,
+                        config_hash,
+                        OCRResultData(
+                            raw_text=ocr_res.raw_text,
+                            model_name=ocr_res.model_name,
+                            confidence=ocr_res.confidence,
+                            processing_time_ms=ocr_res.processing_time_ms,
+                            error=ocr_res.error,
+                        ),
+                    )
+            except Exception as cache_err:
+                logger.warning("Failed to cache OCR results: %s", cache_err)
 
             await save_pipeline_results(session, run.id, pipeline_result)
 
-            run.status = "completed"
+            run.status = RunStatus.COMPLETED
             run.completed_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()
 
@@ -185,8 +253,19 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
 
             logger.info("Pipeline run %s completed successfully", run_id)
 
+        except RunCancelled:
+            run.status = RunStatus.CANCELLED
+            run.completed_at = datetime.now(UTC).replace(tzinfo=None)
+            await session.commit()
+
+            if run.batch_run_id:
+                await update_batch_progress(session, run.batch_run_id)
+                await session.commit()
+
+            logger.info("Pipeline run %s cancelled", run_id)
+
         except PermanentError as e:
-            run.status = "failed"
+            run.status = RunStatus.FAILED
             run.error_message = str(e)[:1000]
             run.completed_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()
@@ -198,7 +277,7 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
             logger.error("Pipeline run %s failed permanently: %s", run_id, e)
 
         except Exception as e:
-            run.status = "failed"
+            run.status = RunStatus.FAILED
             run.error_message = str(e)[:1000]
             run.completed_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()

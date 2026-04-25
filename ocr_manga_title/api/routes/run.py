@@ -1,17 +1,22 @@
-"""Quick run API route — stateless full pipeline execution."""
+"""Quick run API route — stateless full pipeline execution with image caching."""
 
+import json
 import time
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
-from ocr_manga_title.api.schemas.ocr import QuickRunRequest, QuickRunResponse
-from ocr_manga_title.services.image import decode_and_save
-from ocr_manga_title.services.ocr import run_all_enabled_models, run_llm_extraction
-from ocr_manga_title.services.preprocess import run_preprocessing_pipeline
+from ocr_manga_title.api.schemas.ocr import QuickRunResponse
+from ocr_manga_title.services.cache import (
+    hash_bytes,
+    run_all_models_cached,
+    run_preprocessing_cached,
+)
+from ocr_manga_title.services.image import save_bytes
+from ocr_manga_title.services.ocr import run_llm_extraction
 
 router = APIRouter()
 
@@ -36,55 +41,73 @@ def _merge_profile_with_overrides(
 
 @router.post("/quick", response_model=QuickRunResponse)
 async def quick_run(
-    body: QuickRunRequest,
+    file: UploadFile = File(...),
+    preprocess_steps: str = Form("{}"),
+    ocr_models: str = Form("{}"),
+    enable_llm: bool = Form(False),
+    profile_id: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    preprocess_steps = body.preprocess_steps
-    ocr_models = body.ocr_models
-    enable_llm = body.enable_llm
+    pp_steps = json.loads(preprocess_steps)
+    ocr_mods = json.loads(ocr_models)
 
-    if body.profile_id:
+    if profile_id:
         from ocr_manga_title.db.crud import get_profile
 
         try:
-            pid = uuid.UUID(body.profile_id)
+            pid = uuid.UUID(profile_id)
         except ValueError:
             raise HTTPException(
-                status_code=400, detail="Invalid profile_id"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid profile_id"
             ) from None
         profile = await get_profile(db, pid)
         if not profile:
-            raise HTTPException(status_code=404, detail="Profile not found")
-        preprocess_steps, ocr_models, enable_llm = _merge_profile_with_overrides(
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+            )
+        pp_steps, ocr_mods, enable_llm = _merge_profile_with_overrides(
             profile.preprocess_steps,
             profile.ocr_models,
             profile.enable_llm,
-            body.preprocess_steps,
-            body.ocr_models,
-            body.enable_llm if body.enable_llm else None,
+            pp_steps,
+            ocr_mods,
+            None,
         )
 
-    tmp_paths: list[str] = []
+    try:
+        raw = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {e}"
+        ) from e
+
+    tmp_path: str | None = None
     try:
         try:
-            tmp_path = decode_and_save(body.image)
+            tmp_path = save_bytes(raw)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid image: {e}") from e
-        tmp_paths.append(tmp_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image: {e}",
+            ) from e
+
+        image_hash = hash_bytes(raw)
 
         ocr_image_path = tmp_path
-        if preprocess_steps:
+        if pp_steps:
             try:
-                pp_path = run_preprocessing_pipeline(body.image, preprocess_steps)
-                tmp_paths.append(pp_path)
+                pp_path = await run_preprocessing_cached(db, raw, pp_steps)
                 ocr_image_path = pp_path
             except Exception as e:
                 raise HTTPException(
-                    status_code=400, detail=f"Preprocessing failed: {e}"
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Preprocessing failed: {e}",
                 ) from e
 
         start_total = time.monotonic()
-        ocr_results = run_all_enabled_models(ocr_image_path, ocr_models)
+        ocr_results = await run_all_models_cached(
+            db, image_hash, ocr_image_path, ocr_mods
+        )
 
         llm_data = None
         if enable_llm:
@@ -108,5 +131,5 @@ async def quick_run(
             total_processing_time_ms=total_ms,
         )
     finally:
-        for p in tmp_paths:
-            Path(p).unlink(missing_ok=True)
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)

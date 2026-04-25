@@ -6,7 +6,7 @@ import type { PipelineRunResponse } from "../api/types";
 import { DsoPagination, DsoSelect, DsoTable } from "../components/dso";
 import RunStatusBadge from "../components/RunStatusBadge";
 
-const STATUSES = ["", "pending", "processing", "completed", "failed"];
+const STATUSES = ["", "pending", "processing", "completed", "failed", "cancelled"];
 const LIMIT = 20;
 
 export default function Runs() {

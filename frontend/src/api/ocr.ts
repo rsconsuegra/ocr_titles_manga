@@ -6,15 +6,23 @@ export async function getOCRModels(): Promise<ModelDescriptorResponse[]> {
 }
 
 export async function runOCR(
-  image: string,
+  file: File,
   modelName: string,
   params: Record<string, unknown> = {},
   enableLlm: boolean = false,
 ): Promise<OCRRunResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("model_name", modelName);
+  if (Object.keys(params).length > 0) {
+    formData.append("params", JSON.stringify(params));
+  }
+  if (enableLlm) {
+    formData.append("enable_llm", "true");
+  }
   return apiFetch<OCRRunResponse>("/api/v1/ocr/run", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image, model_name: modelName, params, enable_llm: enableLlm }),
+    body: formData,
   });
 }
 

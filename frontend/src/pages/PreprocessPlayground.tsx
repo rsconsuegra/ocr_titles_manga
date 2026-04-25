@@ -12,6 +12,7 @@ type Tab = "step" | "pipeline";
 export default function PreprocessPlayground() {
   const [steps, setSteps] = useState<StepDescriptor[]>([]);
   const [sourceImage, setSourceImage] = useState<string | null>(null);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceFileName, setSourceFileName] = useState<string>("");
   const [tab, setTab] = useState<Tab>("step");
 
@@ -38,6 +39,7 @@ export default function PreprocessPlayground() {
     const file = e.target.files?.[0];
     if (!file) return;
     setSourceFileName(file.name);
+    setSourceFile(file);
     const reader = new FileReader();
     reader.onload = () => setSourceImage(reader.result as string);
     reader.readAsDataURL(file);
@@ -49,6 +51,9 @@ export default function PreprocessPlayground() {
         const imageType = item.types?.find((t) => t.startsWith("image/"));
         if (imageType) {
           const blob = await item.getType(imageType);
+          const file = new File([blob], "pasted.png", { type: imageType });
+          setSourceFile(file);
+          setSourceFileName("pasted.png");
           const reader = new FileReader();
           reader.onload = () => setSourceImage(reader.result as string);
           reader.readAsDataURL(blob);
@@ -59,20 +64,20 @@ export default function PreprocessPlayground() {
   }, []);
 
   const handlePreviewStep = useCallback(async () => {
-    if (!sourceImage) return;
+    if (!sourceFile) return;
     setStepLoading(true);
     try {
-      const res = await previewStep(sourceImage, selectedStep, stepParams);
+      const res = await previewStep(sourceFile, selectedStep, stepParams);
       setStepResult({ image: res.image, metadata: res.metadata, time_ms: res.processing_time_ms });
     } catch {
       setStepResult(null);
     } finally {
       setStepLoading(false);
     }
-  }, [sourceImage, selectedStep, stepParams]);
+  }, [sourceFile, selectedStep, stepParams]);
 
   const handlePreviewPipeline = useCallback(async () => {
-    if (!sourceImage) return;
+    if (!sourceFile) return;
     setPipelineLoading(true);
     try {
       const merged: Record<string, Record<string, unknown>> = {};
@@ -82,14 +87,14 @@ export default function PreprocessPlayground() {
         params["enabled"] = enabled;
         merged[step.name] = params;
       }
-      const res = await previewPipeline(sourceImage, merged);
+      const res = await previewPipeline(sourceFile, merged);
       setPipelineResults(res.steps);
     } catch {
       setPipelineResults(null);
     } finally {
       setPipelineLoading(false);
     }
-  }, [sourceImage, steps, pipelineConfigs, pipelineEnabled]);
+  }, [sourceFile, steps, pipelineConfigs, pipelineEnabled]);
 
   const handleExport = useCallback(async () => {
     const merged: Record<string, Record<string, unknown>> = {};
@@ -176,7 +181,7 @@ export default function PreprocessPlayground() {
             )}
             <DsoButton
               onClick={handlePreviewStep}
-              disabled={!sourceImage || stepLoading}
+              disabled={!sourceFile || stepLoading}
             >
               {stepLoading ? "Processing..." : "Preview Step"}
             </DsoButton>
@@ -223,7 +228,7 @@ export default function PreprocessPlayground() {
           </div>
           <DsoButton
             onClick={handlePreviewPipeline}
-            disabled={!sourceImage || pipelineLoading}
+            disabled={!sourceFile || pipelineLoading}
           >
             {pipelineLoading ? "Processing..." : "Preview Pipeline"}
           </DsoButton>

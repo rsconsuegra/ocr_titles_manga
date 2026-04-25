@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { getRunDetail, overrideResult, triggerPipeline } from "../api/pipeline";
+import { getRunDetail, overrideResult, triggerPipeline, cancelRun } from "../api/pipeline";
 import type { PostProcessingResultDetail, RunDetailResponse } from "../api/types";
 import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import ConfidenceMeter from "../components/ConfidenceMeter";
@@ -17,6 +17,7 @@ export default function RunDetail() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,6 +88,21 @@ export default function RunDetail() {
     }
   }
 
+  async function handleCancel() {
+    if (!id) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      await cancelRun(id);
+      const updated = await getRunDetail(id);
+      setRun(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (loading) return <p className="tech-label breathing">Loading...</p>;
   if (error) return <DsoErrorBanner>{error}</DsoErrorBanner>;
   if (!run) return <p className="text-sm text-muted">Run not found.</p>;
@@ -106,7 +122,12 @@ export default function RunDetail() {
             {run.id.slice(0, 8)}
           </h1>
           <RunStatusBadge status={run.status} />
-          {run.status === "failed" && (
+          {(run.status === "pending" || run.status === "processing") && (
+            <DsoButton variant="amber" onClick={handleCancel} disabled={cancelling}>
+              {cancelling ? "Cancelling..." : "Cancel"}
+            </DsoButton>
+          )}
+          {(["failed", "completed", "cancelled"] as const).includes(run.status as "failed" | "completed" | "cancelled") && (
             <DsoButton variant="amber" onClick={handleRetry} disabled={retrying}>
               {retrying ? "Retrying..." : "Retry"}
             </DsoButton>
