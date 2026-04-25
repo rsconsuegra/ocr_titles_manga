@@ -58,7 +58,7 @@ class OCREngine:
                 from ocr_manga_title.preprocess import PreProcessingPipeline
 
                 self._preprocess_pipeline = PreProcessingPipeline(
-                    preprocess_config, config.images_path
+                    preprocess_config
                 )
                 self._temp_dir = tempfile.TemporaryDirectory(prefix="manga_ocr_")
                 logger.info("Preprocessing pipeline enabled")
@@ -165,7 +165,7 @@ class OCREngine:
 
         return ocr_results, errors
 
-    def _extract_titles(
+    def _llm_extract_from_results(
         self,
         ocr_results: list[OCRResult],
         errors: list[str],
@@ -191,20 +191,40 @@ class OCREngine:
 
             extracted_titles.append(extracted)
 
-        if not extracted_titles or all(t.confidence == 0.0 for t in extracted_titles):
-            for result in ocr_results:
-                if result.error is None and result.raw_text.strip():
-                    try:
-                        rule_result = self._rule_matcher.match(result.raw_text)
-                        if rule_result.code is not None:
-                            rule_result.source_model = result.model_name
-                            extracted_titles.append(rule_result)
-                    except Exception as e:
-                        errors.append(
-                            f"Rule matching failed for {result.model_name}: {e}"
-                        )
-
         return extracted_titles
+
+    def _fallback_rule_match(
+        self,
+        ocr_results: list[OCRResult],
+        errors: list[str],
+    ) -> list[ExtractedTitle]:
+        fallback_titles: list[ExtractedTitle] = []
+
+        for result in ocr_results:
+            if result.error is None and result.raw_text.strip():
+                try:
+                    rule_result = self._rule_matcher.match(result.raw_text)
+                    if rule_result.code is not None:
+                        rule_result.source_model = result.model_name
+                        fallback_titles.append(rule_result)
+                except Exception as e:
+                    errors.append(
+                        f"Rule matching failed for {result.model_name}: {e}"
+                    )
+
+        return fallback_titles
+
+    def _extract_titles(
+        self,
+        ocr_results: list[OCRResult],
+        errors: list[str],
+    ) -> list[ExtractedTitle]:
+        titles = self._llm_extract_from_results(ocr_results, errors)
+
+        if not titles or all(t.confidence == 0.0 for t in titles):
+            titles.extend(self._fallback_rule_match(ocr_results, errors))
+
+        return titles
 
     @staticmethod
     def _select_best(titles: list[ExtractedTitle]) -> ExtractedTitle | None:
@@ -268,6 +288,9 @@ class OCREngine:
             self._temp_dir.cleanup()
             self._temp_dir = None
 
-    def __del__(self) -> None:
-        """Destructor — cleans up temporary resources."""
+    def __enter__(self):  # noqa: D105
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):  # noqa: D105
         self.cleanup()
+        return False

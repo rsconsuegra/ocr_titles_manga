@@ -19,12 +19,12 @@ MODEL_URLS = {
 }
 
 _MODEL_HASHES: dict[str, str] = {
-    "FSRCNN_x2.pb": "sha256:placeholder_replace_with_actual_hash",
-    "FSRCNN_x3.pb": "sha256:placeholder_replace_with_actual_hash",
-    "FSRCNN_x4.pb": "sha256:placeholder_replace_with_actual_hash",
-    "EDSR_x2.pb": "sha256:placeholder_replace_with_actual_hash",
-    "EDSR_x3.pb": "sha256:placeholder_replace_with_actual_hash",
-    "EDSR_x4.pb": "sha256:placeholder_replace_with_actual_hash",
+    "FSRCNN_x2.pb": "sha256:366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c",
+    "FSRCNN_x3.pb": "sha256:efd38655a815908c6c8954db6052f128e76a735f1de657894c477d0dc0b64481",
+    "FSRCNN_x4.pb": "sha256:5c68d18db561aed8ead4ffedf1b897ea615baaf60ebf6c35f8e641f8fa4a21bf",
+    "EDSR_x2.pb": "sha256:585623221baa070279a0d1e7e113a4c3faba0f318ca7fdd9a65d9afc0763d9b4",
+    "EDSR_x3.pb": "sha256:3baa3740fdb8ee9c52f1a41d69fa74cb9feef0fa9bfeec24f0ee58b928068e9a",
+    "EDSR_x4.pb": "sha256:dd35ce3cae53ecee2d16045e08a932c3e7242d641bb65cb971d123e06904347f",
 }
 
 

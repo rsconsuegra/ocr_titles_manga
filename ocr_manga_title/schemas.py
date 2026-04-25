@@ -1,7 +1,6 @@
 """Pydantic data models for configuration and pipeline results."""
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
@@ -43,18 +42,7 @@ class OpenRouterConfig(BaseModel):
 class AppConfig(BaseModel):
     """Top-level application configuration loaded from TOML."""
 
-    images_path: Path
     openrouter: OpenRouterConfig
-
-    @field_validator("images_path")
-    @classmethod
-    def validate_images_path(cls, v: Path) -> Path:
-        """Warn if the configured images directory does not exist."""
-        import logging
-
-        if not v.exists():
-            logging.warning("images_path does not exist: %s", v)
-        return v
 
 
 class ModelConfig(BaseModel):
@@ -73,6 +61,33 @@ class ModelConfig(BaseModel):
     language: str | list[str] = "en"
     parameters: dict[str, Any] = Field(default_factory=dict)
 
+    @classmethod
+    def _resolve_key_alias(cls, data: dict) -> dict:
+        if "__key__" in data:
+            if "name" not in data:
+                data["name"] = data.pop("__key__")
+            else:
+                data.pop("__key__")
+        return data
+
+    @classmethod
+    def _resolve_field_aliases(cls, data: dict) -> dict:
+        for alias, target in _MODEL_ALIASES.items():
+            if alias in data and target not in data:
+                data[target] = data.pop(alias)
+            elif alias in data:
+                data.pop(alias)
+        return data
+
+    @classmethod
+    def _route_extras(cls, data: dict, schema_fields: set[str]) -> dict:
+        extras = {k: v for k, v in data.items() if k not in schema_fields}
+        if extras:
+            data["parameters"] = {**data.get("parameters", {}), **extras}
+            for k in extras:
+                data.pop(k)
+        return data
+
     @model_validator(mode="before")
     @classmethod
     def route_extras_to_parameters(cls, data: Any) -> Any:
@@ -89,27 +104,9 @@ class ModelConfig(BaseModel):
                     f"Unknown field '{key}'. Did you mean one of: {sorted(recognised)}?"
                 )
 
-        routed = dict(data)
-
-        if "__key__" in routed:
-            if "name" not in routed:
-                routed["name"] = routed.pop("__key__")
-            else:
-                routed.pop("__key__")
-
-        for alias, target in _MODEL_ALIASES.items():
-            if alias in routed and target not in routed:
-                routed[target] = routed.pop(alias)
-            elif alias in routed:
-                routed.pop(alias)
-
-        extras = {k: v for k, v in routed.items() if k not in schema_fields}
-        if extras:
-            routed["parameters"] = {**routed.get("parameters", {}), **extras}
-            for k in extras:
-                routed.pop(k)
-
-        return routed
+        data = cls._resolve_key_alias(data)
+        data = cls._resolve_field_aliases(data)
+        return cls._route_extras(data, schema_fields)
 
 
 class PreProcessStepConfig(BaseModel):

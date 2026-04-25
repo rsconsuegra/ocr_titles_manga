@@ -23,10 +23,9 @@ class PreProcessingPipeline:
 
     STEP_ORDER = ["roi", "grayscale", "upscale", "denoise", "binarize"]
 
-    def __init__(self, config: dict, images_path: Path):
+    def __init__(self, config: dict):
         self._config = config.get("preprocessing", {})
         self._debug = self._config.get("debug", False)
-        self._images_path = Path(images_path)
         self._steps: list[BasePreProcessor] = self._initialize_steps()
 
     def _initialize_steps(self) -> list[BasePreProcessor]:
@@ -60,11 +59,13 @@ class PreProcessingPipeline:
             logger.warning("Preprocessing step '%s' not available", name)
         return None
 
-    def _debug_save(self, image: np.ndarray, step_name: str, uid: str) -> str:
-        debug_dir = self._images_path / ".preprocess"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"{uid}_{step_name}.png"
-        path = debug_dir / filename
+    def _save_image(self, image: np.ndarray, label: str, uid: str) -> str:
+        import tempfile
+
+        out_dir = Path(tempfile.gettempdir()) / "manga_ocr_preprocess"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{uid}_{label}.png"
+        path = out_dir / filename
         cv2.imwrite(str(path), image)
         return str(path)
 
@@ -76,7 +77,7 @@ class PreProcessingPipeline:
 
         Returns:
             :class:`~ocr_manga_title.schemas.PreProcessResult` with per-step
-            details and the path to the final processed image (if debug mode).
+            details and the path to the final processed image.
 
         """
         start_time = time.monotonic()
@@ -125,7 +126,7 @@ class PreProcessingPipeline:
 
                 output_path = None
                 if self._debug and result_image is not None:
-                    output_path = self._debug_save(result_image, step.name, uid)
+                    output_path = self._save_image(result_image, step.name, uid)
 
                 step_results.append(
                     PreProcessStepResult(
@@ -153,6 +154,9 @@ class PreProcessingPipeline:
                 )
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
+
+        if any(s.success and s.enabled for s in step_results):
+            final_output_path = self._save_image(current_image, "output", uid)
 
         return PreProcessResult(
             input_path=image_path,

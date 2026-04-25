@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ocr_manga_title.db.enums import CatalogStatus
 from ocr_manga_title.db.models import (
     CatalogEntry,
     OCRResult as OCRResultDB,
@@ -102,7 +103,7 @@ async def override_and_sync(
             catalog.title_ja = updates["title_ja"]
         if updates.get("code") is not None:
             catalog.code = updates["code"]
-        catalog.status = "needs_review"
+        catalog.status = CatalogStatus.NEEDS_REVIEW
         await session.flush()
 
     await session.refresh(pp_result)

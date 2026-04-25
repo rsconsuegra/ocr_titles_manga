@@ -1,5 +1,9 @@
 """Preprocessing execution service — shared by routes and worker."""
 
+from __future__ import annotations
+
+import numpy as np
+
 from ocr_manga_title.preprocess.registry import STEP_ORDER
 from ocr_manga_title.services.image import decode_image, numpy_to_temp_file
 
@@ -31,14 +35,23 @@ def run_preprocessing_pipeline(
 ) -> str:
     """Run preprocessing on a data URL. Returns path to processed image."""
     current_image = decode_image(image_data_url)
-    has_steps = False
+    return _run_pipeline_steps(current_image, steps_config)
 
+
+def run_preprocessing_pipeline_from_array(
+    image: np.ndarray,
+    steps_config: dict,
+) -> str:
+    """Run preprocessing on a numpy array. Returns path to processed image."""
+    return _run_pipeline_steps(image, steps_config)
+
+
+def _run_pipeline_steps(current_image, steps_config: dict) -> str:
     for step_name in STEP_ORDER:
         step_config = dict(steps_config.get(step_name, {}))
         enabled = step_config.pop("enabled", False)
         if not enabled:
             continue
-        has_steps = True
         step = get_step_instance(step_name)
         current_image, _ = step.process(current_image, step_config)
 

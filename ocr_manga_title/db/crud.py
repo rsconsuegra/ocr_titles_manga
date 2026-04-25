@@ -5,6 +5,7 @@ from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ocr_manga_title.db.enums import BatchStatus, RunStatus
 from ocr_manga_title.db.models import (
     BatchRun,
     CatalogEntry,
@@ -14,6 +15,20 @@ from ocr_manga_title.db.models import (
     PipelineRun,
     PromptVersion,
 )
+
+_VALID_MODEL_CONFIG_COLS = {
+    "is_enabled", "parameters", "language_hint",
+}
+_VALID_CATALOG_ENTRY_COLS = {
+    "status", "title_en", "title_ja", "code", "updated_at",
+}
+_VALID_BATCH_RUN_COLS = {
+    "status", "completed_count", "failed_count", "completed_at",
+}
+_VALID_PROFILE_COLS = {
+    "name", "description", "preprocess_steps", "ocr_models",
+    "enable_llm", "is_default",
+}
 
 
 async def get_active_prompt(
@@ -116,9 +131,11 @@ async def update_model_config(
     config = await get_model_config(session, model_name)
     if config is None:
         return None
+    unknown = set(kwargs) - _VALID_MODEL_CONFIG_COLS
+    if unknown:
+        raise TypeError(f"Unknown ModelConfig fields: {unknown}")
     for key, value in kwargs.items():
-        if hasattr(config, key):
-            setattr(config, key, value)
+        setattr(config, key, value)
     await session.flush()
     await session.refresh(config)
     return config
@@ -142,7 +159,7 @@ async def create_pipeline_run(session: AsyncSession, **kwargs) -> PipelineRun:
     return run
 
 
-async def get_pipeline_run(session: AsyncSession, run_id) -> PipelineRun | None:
+async def get_pipeline_run(session: AsyncSession, run_id: uuid.UUID) -> PipelineRun | None:
     """Fetch a single pipeline run by its ID.
 
     Args:
@@ -203,7 +220,7 @@ async def count_pipeline_runs(session: AsyncSession, status: str | None = None) 
     return result.scalar_one()
 
 
-async def get_pipeline_run_detail(session: AsyncSession, run_id) -> dict | None:
+async def get_pipeline_run_detail(session: AsyncSession, run_id: uuid.UUID) -> PipelineRun | None:
     """Fetch a pipeline run with eager-loaded OCR and post-processing results.
 
     Args:
@@ -211,7 +228,7 @@ async def get_pipeline_run_detail(session: AsyncSession, run_id) -> dict | None:
         run_id: UUID of the pipeline run.
 
     Returns:
-        A dict representation of the run with nested results, or ``None``.
+        The :class:`PipelineRun` with eager-loaded relationships, or ``None``.
 
     """
     stmt = (
@@ -224,44 +241,10 @@ async def get_pipeline_run_detail(session: AsyncSession, run_id) -> dict | None:
         )
     )
     result = await session.execute(stmt)
-    run = result.scalar_one_or_none()
-    if not run:
-        return None
-    return {
-        "id": run.id,
-        "input_image_path": run.input_image_path,
-        "status": run.status,
-        "error_message": run.error_message,
-        "created_at": run.created_at,
-        "completed_at": run.completed_at,
-        "ocr_results": [
-            {
-                "id": ocr.id,
-                "model_name": ocr.model_name,
-                "raw_text": ocr.raw_text,
-                "confidence": ocr.confidence,
-                "processing_time_ms": ocr.processing_time_ms,
-                "error": ocr.error,
-                "created_at": ocr.created_at,
-                "post_processing_results": [
-                    {
-                        "id": pp.id,
-                        "title_en": pp.title_en,
-                        "title_ja": pp.title_ja,
-                        "code": pp.code,
-                        "confidence": pp.confidence,
-                        "processing_type": pp.processing_type,
-                        "created_at": pp.created_at,
-                    }
-                    for pp in ocr.post_processing_results
-                ],
-            }
-            for ocr in run.ocr_results
-        ],
-    }
+    return result.scalar_one_or_none()
 
 
-async def get_catalog_entry(session: AsyncSession, entry_id) -> CatalogEntry | None:
+async def get_catalog_entry(session: AsyncSession, entry_id: uuid.UUID) -> CatalogEntry | None:
     """Fetch a single catalog entry by its ID.
 
     Args:
@@ -341,9 +324,11 @@ async def update_catalog_entry(
     entry = await get_catalog_entry(session, entry_id)
     if not entry:
         return None
+    unknown = set(kwargs) - _VALID_CATALOG_ENTRY_COLS
+    if unknown:
+        raise TypeError(f"Unknown CatalogEntry fields: {unknown}")
     for key, value in kwargs.items():
-        if hasattr(entry, key):
-            setattr(entry, key, value)
+        setattr(entry, key, value)
     await session.flush()
     await session.refresh(entry)
     return entry
@@ -470,9 +455,11 @@ async def update_batch_run(
     batch = await get_batch_run(session, batch_id)
     if not batch:
         return None
+    unknown = set(kwargs) - _VALID_BATCH_RUN_COLS
+    if unknown:
+        raise TypeError(f"Unknown BatchRun fields: {unknown}")
     for key, value in kwargs.items():
-        if hasattr(batch, key):
-            setattr(batch, key, value)
+        setattr(batch, key, value)
     await session.flush()
     await session.refresh(batch)
     return batch
@@ -505,7 +492,7 @@ async def update_batch_progress(
             .select_from(PipelineRun)
             .where(
                 PipelineRun.batch_run_id == batch_id,
-                PipelineRun.status == "completed",
+                PipelineRun.status == RunStatus.COMPLETED,
             )
         )
     ).scalar_one()
@@ -516,7 +503,7 @@ async def update_batch_progress(
             .select_from(PipelineRun)
             .where(
                 PipelineRun.batch_run_id == batch_id,
-                PipelineRun.status == "failed",
+                PipelineRun.status == RunStatus.FAILED,
             )
         )
     ).scalar_one()
@@ -527,9 +514,9 @@ async def update_batch_progress(
     finished = completed + failed
     if finished >= batch.total_count:
         if failed == 0:
-            batch.status = "completed"
+            batch.status = BatchStatus.COMPLETED
         else:
-            batch.status = "partial_failure"
+            batch.status = BatchStatus.PARTIAL_FAILURE
         batch.completed_at = datetime.now(UTC).replace(tzinfo=None)
 
     await session.flush()
@@ -613,9 +600,11 @@ async def update_profile(
         return None
     if kwargs.get("is_default") is True:
         await _unset_default_profiles(session)
+    unknown = set(kwargs) - _VALID_PROFILE_COLS
+    if unknown:
+        raise TypeError(f"Unknown PipelineProfile fields: {unknown}")
     for key, value in kwargs.items():
-        if hasattr(profile, key):
-            setattr(profile, key, value)
+        setattr(profile, key, value)
     await session.flush()
     await session.refresh(profile)
     return profile

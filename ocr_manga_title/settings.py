@@ -42,5 +42,17 @@ ALLOWED_EXTENSIONS: tuple[str, ...] = (
 MAX_FILE_SIZE: int = 20 * 1024 * 1024
 MAX_FILES: int = 10
 
+# --- Images ---
+IMAGES_PATH: str = os.getenv("IMAGES_PATH", "/app/uploads")
+
+# --- Cache ---
+CACHE_DIR: str = os.getenv("CACHE_DIR", "/app/cache")
+CACHE_TTL_DAYS: int = int(os.getenv("CACHE_TTL_DAYS", "7"))
+CACHE_SWEEPER_INTERVAL_SECONDS: int = int(
+    os.getenv("CACHE_SWEEPER_INTERVAL_SECONDS", "3600")
+)
+
 # --- CORS ---
-CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+CORS_ORIGINS: list[str] = os.getenv(
+    "CORS_ORIGINS", "http://localhost:5173"
+).split(",")

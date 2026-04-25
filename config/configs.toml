@@ -1,5 +1,3 @@
-images_path = "/Users/rconsuegra/Pictures/images"
-
 [openrouter]
 api_key = "sk-or-replace-me"
 default_model = "google/gemini-2.5-flash"

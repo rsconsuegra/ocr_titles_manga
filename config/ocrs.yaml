@@ -7,9 +7,14 @@ models:
   paddle:
     enabled: false
     languages: ["en", "ja"]
+    use_gpu: false
   easyocr:
     enabled: false
     languages: ["en", "ja"]
+    gpu: false
   glm_ocr:
     enabled: false
     api_endpoint: ""
+    model: "google/gemini-2.5-flash"
+    api_key: ""
+    prompt: "Extract all text from this image."

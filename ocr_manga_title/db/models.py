@@ -5,6 +5,8 @@ from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String,
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+from ocr_manga_title.db.enums import BatchStatus, CatalogStatus, RunStatus
+
 
 class Base(DeclarativeBase):
     """SQLAlchemy declarative base for all ORM models."""
@@ -20,7 +22,7 @@ class BatchRun(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
+        String(20), nullable=False, default=BatchStatus.PENDING
     )
     total_count: Mapped[int] = mapped_column(Integer, nullable=False)
     completed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -42,7 +44,7 @@ class PipelineRun(Base):
     input_image_path: Mapped[str] = mapped_column(String(500), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     source_platform: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=RunStatus.PENDING)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     preprocess_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     batch_run_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -142,7 +144,7 @@ class CatalogEntry(Base):
         ForeignKey("pipeline_runs.id"), nullable=False
     )
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="needs_review")
+    status: Mapped[str] = mapped_column(String(20), default=CatalogStatus.NEEDS_REVIEW)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
@@ -186,4 +188,30 @@ class ModelConfig(Base):
     language_hint: Mapped[str | None] = mapped_column(String(50), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ImageCache(Base):
+    """Content-addressable cache for preprocessed images and OCR results."""
+
+    __tablename__ = "image_cache"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    image_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    cache_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    result_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    result_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index(
+            "uq_image_cache_lookup",
+            "image_hash",
+            "config_hash",
+            "cache_type",
+            unique=True,
+        ),
+        Index("ix_image_cache_expires_at", "expires_at"),
     )
