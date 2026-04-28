@@ -16,6 +16,7 @@ class ParamDescriptor:
     label: str = ""
     description: str = ""
     options: list[str] | None = None
+    disabled_options: dict[str, str] = field(default_factory=dict)
     min: float | None = None
     max: float | None = None
     step: float | None = None
@@ -91,6 +92,9 @@ STEP_REGISTRY: dict[str, StepDescriptor] = {
                 default="cubic",
                 label="Method",
                 options=["cubic", "fsrcnn", "edsr"],
+                disabled_options={
+                    "edsr": "Too slow on CPU for interactive use — available in pipeline profiles",
+                },
             ),
             ParamDescriptor(
                 name="scale_factor",
@@ -168,7 +172,7 @@ STEP_REGISTRY: dict[str, StepDescriptor] = {
     ),
 }
 
-STEP_ORDER = ["roi", "grayscale", "upscale", "denoise", "binarize"]
+STEP_ORDER = ["roi", "upscale", "grayscale", "denoise", "binarize"]
 
 
 def get_all_steps() -> list[StepDescriptor]:

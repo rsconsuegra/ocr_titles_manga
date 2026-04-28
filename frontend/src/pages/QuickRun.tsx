@@ -1,15 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getOCRModels } from "../api/ocr";
+import { getPreprocessSteps } from "../api/preprocess";
 import { listProfiles } from "../api/profiles";
 import { quickRun } from "../api/run";
-import { getPreprocessSteps } from "../api/preprocess";
 import type { ModelDescriptorResponse, ProfileResponse, QuickRunResponse, StepDescriptor } from "../api/types";
 import { DsoButton, DsoCard, DsoErrorBanner, DsoSelect } from "../components/dso";
-import ConfidenceMeter from "../components/ConfidenceMeter";
+import LlmConfigSection from "../components/LlmConfigSection";
+import LlmExtractionCard from "../components/LlmExtractionCard";
+import OcrModelCard from "../components/OcrModelCard";
+import OcrResultCard from "../components/OcrResultCard";
 import PreprocessStepCard from "../components/PreprocessStepCard";
-import { useFileReader } from "../hooks/useFileReader";
+import PromptSettingsPanel from "../components/PromptSettingsPanel";
+import SingleImageUpload from "../components/SingleImageUpload";
+import { OLLAMA_VISION_MODEL } from "../constants";
+import { useLlmPromptState } from "../hooks/useLlmPromptState";
+import { useOllamaModels } from "../hooks/useOllamaModels";
 import { useYamlConfig } from "../hooks/useYamlConfig";
+import { parseStepEntries } from "../utils/configParsing";
 
 export default function QuickRun() {
   const [preprocessSteps, setPreprocessSteps] = useState<StepDescriptor[]>([]);
@@ -25,13 +33,15 @@ export default function QuickRun() {
   const [ocrConfig, setOcrConfig] = useState<Record<string, Record<string, unknown>>>({});
   const [ocrEnabled, setOcrEnabled] = useState<Record<string, boolean>>({});
   const [enableLlm, setEnableLlm] = useState(false);
+  const [llmProvider, setLlmProvider] = useState("openrouter");
+  const [llmModel, setLlmModel] = useState("");
+  const promptState = useLlmPromptState();
   const [result, setResult] = useState<QuickRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const { status: ollamaStatus, visionModels, llmModels: ollamaLlmModels } = useOllamaModels();
   const ppYamlRef = useRef<HTMLInputElement>(null);
   const ocrYamlRef = useRef<HTMLInputElement>(null);
-  const readFile = useFileReader();
   const parseYaml = useYamlConfig();
 
   useEffect(() => {
@@ -39,15 +49,6 @@ export default function QuickRun() {
     getOCRModels().then(setOcrModels).catch(() => {});
     listProfiles().then((res) => setProfiles(res.items)).catch(() => {});
   }, []);
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await readFile(file);
-    setImageDataUrl(dataUrl);
-    setImageFile(file);
-    setResult(null);
-  }
 
   function handlePreprocessYamlUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -90,57 +91,19 @@ export default function QuickRun() {
     if (!profile) return;
     if (profile.preprocess_steps) {
       setUseCustomPreprocess(true);
-      const newConfig: Record<string, Record<string, unknown>> = {};
-      const newEnabled: Record<string, boolean> = {};
-      for (const [stepName, cfg] of Object.entries(profile.preprocess_steps)) {
-        const enabled = (cfg as Record<string, unknown>).enabled === true;
-        newEnabled[stepName] = enabled;
-        const params = { ...cfg } as Record<string, unknown>;
-        delete params.enabled;
-        newConfig[stepName] = params as Record<string, unknown>;
-      }
-      setPreprocessConfig(newConfig);
-      setPreprocessEnabled(newEnabled);
+      const { config, enabled } = parseStepEntries(profile.preprocess_steps);
+      setPreprocessConfig(config);
+      setPreprocessEnabled(enabled);
     }
     if (profile.ocr_models) {
       setUseCustomOcr(true);
-      const newConfig: Record<string, Record<string, unknown>> = {};
-      const newEnabled: Record<string, boolean> = {};
-      for (const [modelName, cfg] of Object.entries(profile.ocr_models)) {
-        const enabled = (cfg as Record<string, unknown>).enabled === true;
-        newEnabled[modelName] = enabled;
-        const params = { ...cfg } as Record<string, unknown>;
-        delete params.enabled;
-        newConfig[modelName] = params as Record<string, unknown>;
-      }
-      setOcrConfig(newConfig);
-      setOcrEnabled(newEnabled);
+      const { config, enabled } = parseStepEntries(profile.ocr_models);
+      setOcrConfig(config);
+      setOcrEnabled(enabled);
     }
     setEnableLlm(profile.enable_llm);
-  }
-
-  function buildPreprocessSteps(): Record<string, Record<string, unknown>> | undefined {
-    if (!useCustomPreprocess) return undefined;
-    const ppSteps: Record<string, Record<string, unknown>> = {};
-    for (const step of preprocessSteps) {
-      const enabled = preprocessEnabled[step.name] ?? false;
-      if (enabled) {
-        ppSteps[step.name] = { ...preprocessConfig[step.name], enabled: true };
-      }
-    }
-    return ppSteps;
-  }
-
-  function buildOcrModelsConfig(): Record<string, Record<string, unknown>> | undefined {
-    if (!useCustomOcr) return undefined;
-    const ocrModelsConfig: Record<string, Record<string, unknown>> = {};
-    for (const m of ocrModels) {
-      const enabled = ocrEnabled[m.name] ?? false;
-      if (enabled) {
-        ocrModelsConfig[m.name] = { ...ocrConfig[m.name], enabled: true };
-      }
-    }
-    return ocrModelsConfig;
+    setLlmProvider(profile.llm_provider || "openrouter");
+    promptState.loadFromProfile(profile);
   }
 
   async function handleRun() {
@@ -150,10 +113,35 @@ export default function QuickRun() {
     setResult(null);
 
     try {
+      let finalPpSteps: Record<string, Record<string, unknown>> | undefined;
+      if (useCustomPreprocess) {
+        finalPpSteps = {};
+        for (const step of preprocessSteps) {
+          const enabled = preprocessEnabled[step.name] ?? false;
+          if (enabled) {
+            finalPpSteps[step.name] = { ...preprocessConfig[step.name], enabled: true };
+          }
+        }
+      }
+
+      let finalOcrModels: Record<string, Record<string, unknown>> | undefined;
+      if (useCustomOcr) {
+        finalOcrModels = {};
+        for (const m of ocrModels) {
+          const enabled = ocrEnabled[m.name] ?? false;
+          if (enabled) {
+            finalOcrModels[m.name] = { ...ocrConfig[m.name], enabled: true };
+          }
+        }
+      }
+
       const resp = await quickRun(imageFile, {
-        preprocessSteps: buildPreprocessSteps(),
-        ocrModels: buildOcrModelsConfig(),
+        preprocessSteps: finalPpSteps,
+        ocrModels: finalOcrModels,
         enableLlm,
+        llmProvider,
+        llmModel: llmModel || undefined,
+        llmConfig: promptState.toConfig(),
         profileId: selectedProfileId || undefined,
       });
       setResult(resp);
@@ -172,19 +160,15 @@ export default function QuickRun() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <div>
-            <p className="tech-label mb-1">Image</p>
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-            <DsoButton
-              variant="secondary"
-              onClick={() => fileRef.current?.click()}
-            >
-              {imageDataUrl ? "Change Image" : "Upload Image"}
-            </DsoButton>
-            {imageDataUrl && (
-              <img src={imageDataUrl} alt="Preview" className="mt-2 max-h-48 rounded border border-highlight/20" />
-            )}
-          </div>
+          <SingleImageUpload
+            imageDataUrl={imageDataUrl}
+            fileName={imageFile?.name ?? ""}
+            onImageChange={(dataUrl, file) => {
+              setImageDataUrl(dataUrl);
+              setImageFile(file);
+              setResult(null);
+            }}
+          />
 
           {profiles.length > 0 && (
             <DsoSelect
@@ -251,34 +235,60 @@ export default function QuickRun() {
             {useCustomOcr && (
               <div className="mt-3 space-y-3">
                 {ocrModels.map((m) => (
-                  <div key={m.name} className="neo-inset rounded-lg p-3">
-                    <label className="flex items-center gap-2 text-sm font-medium text-bright">
-                      <input type="checkbox" checked={ocrEnabled[m.name] ?? false} onChange={(e) => setOcrEnabled((prev) => ({ ...prev, [m.name]: e.target.checked }))} className={cbx} />
-                      {m.label}
-                      {!m.available && <span className="text-xs text-muted">(not available)</span>}
-                    </label>
-                    {ocrEnabled[m.name] && m.params.length > 0 && (
-                      <div className="mt-2">
-                        <PreprocessStepCard
-                          step={{ name: m.name, label: m.label, description: m.description, params: m.params }}
-                          params={ocrConfig[m.name] || {}}
-                          enabled={true}
-                          onParamsChange={(c) => setOcrConfig((prev) => ({ ...prev, [m.name]: c }))}
-                          onEnabledChange={() => {}}
-                          showEnabled={false}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <OcrModelCard
+                    key={m.name}
+                    model={m}
+                    enabled={ocrEnabled[m.name] ?? false}
+                    config={ocrConfig[m.name] || {}}
+                    onEnabledChange={(checked) => {
+                      setOcrEnabled((prev) => ({ ...prev, [m.name]: checked }));
+                      if (m.name === OLLAMA_VISION_MODEL && checked) setEnableLlm(false);
+                    }}
+                    onConfigChange={(c) => setOcrConfig((prev) => ({ ...prev, [m.name]: c }))}
+                    ollamaStatus={ollamaStatus}
+                    ollamaModels={visionModels}
+                    visionModelValue={(ocrConfig[m.name]?.model_name as string) || ""}
+                    onVisionModelChange={(v) =>
+                      setOcrConfig((prev) => ({
+                        ...prev,
+                        [m.name]: { ...prev[m.name], model_name: v },
+                      }))
+                    }
+                  />
                 ))}
               </div>
             )}
           </DsoCard>
 
-          <label className="flex items-center gap-2 text-sm text-bright">
-            <input type="checkbox" checked={enableLlm} onChange={(e) => setEnableLlm(e.target.checked)} className={cbx} />
-            Post-process with LLM
-          </label>
+          <LlmConfigSection
+            enableLlm={enableLlm}
+            onEnableLlmChange={setEnableLlm}
+            llmDisabled={!!ocrEnabled[OLLAMA_VISION_MODEL]}
+            llmProvider={llmProvider}
+            onLlmProviderChange={setLlmProvider}
+            llmModel={llmModel}
+            onLlmModelChange={setLlmModel}
+            ollamaModels={ollamaLlmModels}
+            ollamaStatus={ollamaStatus}
+            radioName="llm_provider_quick"
+          />
+
+          {enableLlm && (
+            <PromptSettingsPanel
+              systemPrompt={promptState.llmSystemPrompt}
+              onSystemPromptChange={promptState.setLlmSystemPrompt}
+              userPrompt={promptState.llmUserPrompt}
+              onUserPromptChange={promptState.setLlmUserPrompt}
+              temperature={promptState.llmTemperature}
+              onTemperatureChange={promptState.setLlmTemperature}
+              maxOcrChars={promptState.llmMaxOcrChars}
+              onMaxOcrCharsChange={promptState.setLlmMaxOcrChars}
+              showToggle={true}
+              isOpen={promptState.showPromptSettings}
+              onToggle={() => promptState.setShowPromptSettings(!promptState.showPromptSettings)}
+              size="sm"
+            />
+          )}
 
           <DsoButton onClick={handleRun} disabled={loading || !imageFile} className="w-full">
             {loading ? "Running..." : "Run Pipeline"}
@@ -301,51 +311,23 @@ export default function QuickRun() {
               )}
 
               {result.ocr_results.map((ocr, i) => (
-                <DsoCard key={i}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-bright">{ocr.model_name}</h3>
-                    <ConfidenceMeter value={ocr.confidence} />
-                  </div>
-                  <div className="text-xs text-muted mb-2">{ocr.processing_time_ms}ms</div>
-                  <div className="rounded bg-lcd p-3">
-                    <pre className="whitespace-pre-wrap break-words text-sm text-bright/80">
-                      {ocr.raw_text || "(empty)"}
-                    </pre>
-                  </div>
-                  {ocr.error && (
-                    <DsoErrorBanner className="mt-2">{ocr.error}</DsoErrorBanner>
-                  )}
-                </DsoCard>
+                <OcrResultCard
+                  key={i}
+                  modelName={ocr.model_name}
+                  processingTimeMs={ocr.processing_time_ms}
+                  confidence={ocr.confidence}
+                  rawText={ocr.raw_text}
+                  error={ocr.error}
+                />
               ))}
 
               {result.llm && (
-                <DsoCard variant="lcd">
-                  <h3 className="mb-2 text-sm font-semibold text-teal">LLM Extraction</h3>
-                  <div className="space-y-1 text-sm">
-                    {result.llm.title_en && (
-                      <div>
-                        <span className="text-muted">Title (EN):</span>{" "}
-                        <span className="font-medium text-bright">{result.llm.title_en}</span>
-                      </div>
-                    )}
-                    {result.llm.title_ja && (
-                      <div>
-                        <span className="text-muted">Title (JA):</span>{" "}
-                        <span className="font-medium text-bright">{result.llm.title_ja}</span>
-                      </div>
-                    )}
-                    {result.llm.code && (
-                      <div>
-                        <span className="text-muted">Code:</span>{" "}
-                        <span className="font-mono text-bright">{result.llm.code}</span>
-                      </div>
-                    )}
-                    <div>
-                      <span className="text-muted">Confidence:</span>
-                      <ConfidenceMeter value={result.llm.confidence} />
-                    </div>
-                  </div>
-                </DsoCard>
+                <LlmExtractionCard
+                  titleEn={result.llm.title_en}
+                  titleJa={result.llm.title_ja}
+                  code={result.llm.code}
+                  confidence={result.llm.confidence}
+                />
               )}
             </>
           )}

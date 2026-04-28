@@ -17,6 +17,7 @@ export default function Runs() {
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- data-fetching effect */
   useEffect(() => {
     setLoading(true);
     listRuns({ status: statusFilter || undefined, limit: LIMIT, offset })
@@ -26,6 +27,7 @@ export default function Runs() {
       })
       .finally(() => setLoading(false));
   }, [statusFilter, offset]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     const hasActive = runs.some((r) => r.status === "pending" || r.status === "processing");
@@ -34,7 +36,7 @@ export default function Runs() {
       listRuns({ status: statusFilter || undefined, limit: LIMIT, offset }).then((data) => {
         setRuns(data.items);
         setTotal(data.total);
-      });
+      }).catch(() => {});
     }, 10000);
     return () => clearInterval(interval);
   }, [runs, statusFilter, offset]);

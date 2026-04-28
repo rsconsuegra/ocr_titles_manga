@@ -109,6 +109,9 @@ class PostProcessingResult(Base):
     code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     processing_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    system_prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    temperature_used: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     ocr_result: Mapped["OCRResult"] = relationship(
@@ -167,6 +170,8 @@ class PipelineProfile(Base):
     preprocess_steps: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ocr_models: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     enable_llm: Mapped[bool] = mapped_column(Boolean, default=False)
+    llm_provider: Mapped[str] = mapped_column(String(20), default="openrouter")
+    llm_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
@@ -214,4 +219,19 @@ class ImageCache(Base):
             unique=True,
         ),
         Index("ix_image_cache_expires_at", "expires_at"),
+    )
+
+
+class ApiCredential(Base):
+    """Encrypted API key storage for external services (e.g. OpenRouter)."""
+
+    __tablename__ = "api_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    service_name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
     )

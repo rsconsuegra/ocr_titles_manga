@@ -25,6 +25,24 @@ from ocr_manga_title.schemas import (
 logger = logging.getLogger(__name__)
 
 
+def _build_prompt_config(llm_config: dict | None):
+    from ocr_manga_title.schemas import LLMPromptConfig
+
+    if not llm_config:
+        return None
+    system_prompt = llm_config.get("system_prompt", "")
+    if not system_prompt:
+        from prompts import DEFAULT_SYSTEM_PROMPT
+
+        system_prompt = DEFAULT_SYSTEM_PROMPT
+    return LLMPromptConfig(
+        system_prompt=system_prompt,
+        user_prompt_template=llm_config.get("user_prompt_template", "{ocr_text}"),
+        temperature=float(llm_config.get("temperature", 0.1)),
+        max_ocr_chars=int(llm_config.get("max_ocr_chars", 0)),
+    )
+
+
 class OCREngine:
     """Orchestrates OCR model execution, LLM extraction, and rule-based post-processing.
 
@@ -43,11 +61,18 @@ class OCREngine:
         config: AppConfig,
         ocr_config: dict[str, ModelConfig],
         preprocess_config: dict | None = None,
+        llm_config: dict | None = None,
     ):
         self._config = config
         self._ocr_config = ocr_config
         self._models: list[BaseOCRModel] = self._initialize_models()
-        self._llm_extractor = LLMExtractor(config.openrouter)
+        self._prompt_config = _build_prompt_config(llm_config)
+        self._llm_extractor = LLMExtractor(
+            openrouter_config=config.openrouter if config.llm_provider == "openrouter" else None,
+            ollama_config=config.ollama if config.llm_provider == "ollama" else None,
+            provider=config.llm_provider,
+            prompt_config=self._prompt_config,
+        )
         self._rule_matcher = RuleMatcher()
         self._preprocess_pipeline = None
         self._temp_dir: tempfile.TemporaryDirectory | None = None
@@ -113,13 +138,18 @@ class OCREngine:
         return models
 
     def _run_single_model(self, model: BaseOCRModel, image_path: str) -> OCRResult:
+        logger.info("OCR model '%s' started", model.name)
         start = time.monotonic()
         try:
-            return model.run(image_path)
+            result = model.run(image_path)
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.info("OCR model '%s' finished in %dms", model.name, elapsed_ms)
+            return result
         except FileNotFoundError:
             raise
         except Exception as e:
             elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.info("OCR model '%s' failed in %dms: %s", model.name, elapsed_ms, e)
             return OCRResult(
                 raw_text="",
                 model_name=model.name,
@@ -176,11 +206,16 @@ class OCREngine:
             if result.error is not None or not result.raw_text.strip():
                 continue
 
+            llm_start = time.monotonic()
             try:
+                logger.info("LLM extraction started for model '%s'", result.model_name)
                 extracted = self._llm_extractor.extract(result.raw_text)
+                llm_ms = int((time.monotonic() - llm_start) * 1000)
+                logger.info("LLM extraction finished for model '%s' in %dms", result.model_name, llm_ms)
             except LLMExtractionError as e:
+                llm_ms = int((time.monotonic() - llm_start) * 1000)
                 errors.append(f"LLM extraction failed for {result.model_name}: {e}")
-                logger.error("LLM extraction failed for %s: %s", result.model_name, e)
+                logger.error("LLM extraction failed for %s in %dms: %s", result.model_name, llm_ms, e)
                 continue
 
             try:
@@ -256,6 +291,9 @@ class OCREngine:
         if path.suffix.lower() not in self.SUPPORTED_FORMATS:
             raise ValueError(f"Unsupported image format: {path.suffix}")
 
+        pipeline_start = time.monotonic()
+        logger.info("Pipeline started for %s", image_path)
+
         preprocess_result = None
         ocr_image_path = image_path
 
@@ -272,6 +310,9 @@ class OCREngine:
             self._extract_titles(ocr_results, errors) if enable_llm else []
         )
         best = self._select_best(extracted_titles)
+
+        pipeline_ms = int((time.monotonic() - pipeline_start) * 1000)
+        logger.info("Pipeline complete in %dms", pipeline_ms)
 
         return PipelineResult(
             input_path=str(image_path),

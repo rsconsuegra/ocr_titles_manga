@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getBatchDetail, triggerBatch } from "../api/batch";
@@ -15,17 +15,7 @@ export default function BatchRunDetail() {
   const [triggering, setTriggering] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (id) load();
-  }, [id]);
-
-  useEffect(() => {
-    if (!batch || !["processing"].includes(batch.status)) return;
-    const interval = setInterval(load, 3000);
-    return () => clearInterval(interval);
-  }, [batch?.status]);
-
-  async function load() {
+  const load = useCallback(async () => {
     if (!id) return;
     try {
       const data = await getBatchDetail(id);
@@ -35,7 +25,21 @@ export default function BatchRunDetail() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- data-fetching effect */
+  useEffect(() => {
+    load();
+  }, [load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const isProcessing = batch?.status === "processing";
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const interval = setInterval(load, 3000);
+    return () => clearInterval(interval);
+  }, [isProcessing, load]);
 
   async function handleTrigger() {
     if (!id) return;

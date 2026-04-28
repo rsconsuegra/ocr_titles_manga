@@ -6,11 +6,11 @@
 
 2. **[Backend Reference](backend.md)** — Module index, OCR engine, preprocessing pipeline, post-processing (LLM + rules), services layer, settings, worker, CLI
 
-3. **[Database Reference](database.md)** — Schema diagram, all 8 ORM models with column details, ~40 CRUD functions, migration chain, session management
+3. **[Database Reference](database.md)** — Schema diagram, all 9 ORM models with column details, ~40 CRUD functions, migration chain, session management
 
-4. **[API Reference](api-reference.md)** — All 31 endpoints across 10 route modules, request/response schemas, error responses, OpenAPI/Swagger info
+4. **[API Reference](api-reference.md)** — All 32 endpoints across 10 route modules, request/response schemas, error responses, OpenAPI/Swagger info
 
-5. **[Frontend Reference](frontend.md)** — React app structure, routing, API client, components, hooks, key pages (Upload, QuickRun, BatchDetail, ProfileEditor)
+5. **[Frontend Reference](frontend.md)** — React app structure, routing, API client, components, hooks, key pages (Upload, QuickRun, RunDetail, BatchDetail, ProfileEditor)
 
 6. **[Infrastructure & Deployment](infrastructure.md)** — Docker Compose stack, Dockerfile, Makefile commands, local dev setup, environment variables, config files, dependencies
 

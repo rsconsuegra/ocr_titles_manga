@@ -7,8 +7,8 @@ interface PreprocessStepCardProps {
   params: Record<string, unknown>;
   enabled: boolean;
   showEnabled?: boolean;
-  onParamsChange: (params: Record<string, unknown>) => void;
-  onEnabledChange: (enabled: boolean) => void;
+  onParamsChange: (updated: Record<string, unknown>) => void;
+  onEnabledChange: (checked: boolean) => void;
 }
 
 function ParamInput({
@@ -18,7 +18,7 @@ function ParamInput({
 }: {
   param: ParamDescriptor;
   value: unknown;
-  onChange: (v: unknown) => void;
+  onChange: (value: unknown) => void;
 }) {
   if (param.type === "multiselect" && param.options) {
     const selected = (Array.isArray(value) ? value : param.default ?? []) as string[];
@@ -44,18 +44,27 @@ function ParamInput({
   }
 
   if (param.type === "select" && param.options) {
+    const disabled = param.disabled_options ?? {};
     return (
-      <select
-        className="rounded border border-highlight/20 bg-inset px-2 py-1 text-sm text-bright focus:border-teal/40 focus:outline-none"
-        value={String(value ?? param.default)}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {param.options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
+      <div>
+        <select
+          className="rounded border border-highlight/20 bg-inset px-2 py-1 text-sm text-bright focus:border-teal/40 focus:outline-none"
+          value={String(value ?? param.default)}
+          onChange={(e) => {
+            if (disabled[e.target.value]) return;
+            onChange(e.target.value);
+          }}
+        >
+          {param.options.map((opt) => (
+            <option key={opt} value={opt} disabled={Boolean(disabled[opt])}>
+              {opt}{disabled[opt] ? " — unavailable" : ""}
+            </option>
+          ))}
+        </select>
+        {disabled[String(value ?? param.default)] && (
+          <p className="mt-1 text-xs text-amber">{disabled[String(value ?? param.default)]}</p>
+        )}
+      </div>
     );
   }
 
@@ -66,6 +75,28 @@ function ParamInput({
         checked={Boolean(value ?? param.default)}
         onChange={(e) => onChange(e.target.checked)}
         className="h-4 w-4 rounded border-highlight/40 bg-inset accent-teal"
+      />
+    );
+  }
+
+  if (param.type === "textarea") {
+    return (
+      <textarea
+        className="w-full rounded border border-highlight/20 bg-inset px-2 py-1 text-sm text-bright placeholder:text-muted/50 focus:border-teal/40 focus:outline-none"
+        value={String(value ?? param.default)}
+        rows={3}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+
+  if (param.type === "text") {
+    return (
+      <input
+        type="text"
+        className="w-full rounded border border-highlight/20 bg-inset px-2 py-1 text-sm text-bright focus:border-teal/40 focus:outline-none"
+        value={String(value ?? param.default)}
+        onChange={(e) => onChange(e.target.value)}
       />
     );
   }
@@ -97,6 +128,7 @@ export default function PreprocessStepCard({
   const [localParams, setLocalParams] = useState<Record<string, unknown>>(params);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync from controlled props
     setLocalParams(params);
   }, [params]);
 
@@ -132,8 +164,8 @@ export default function PreprocessStepCard({
       {enabled && step.params.length > 0 && (
         <div className="space-y-2">
           {step.params.map((p) => (
-            <div key={p.name} className={p.type === "multiselect" ? "space-y-1" : "flex items-center gap-2"}>
-              <label className={p.type === "multiselect" ? "text-xs font-medium text-muted" : "w-24 shrink-0 text-xs font-medium text-muted"}>
+            <div key={p.name} className={p.type === "multiselect" || p.type === "textarea" ? "space-y-1" : "flex items-center gap-2"}>
+              <label className={p.type === "multiselect" || p.type === "textarea" ? "text-xs font-medium text-muted" : "w-24 shrink-0 text-xs font-medium text-muted"}>
                 {p.label || p.name}
               </label>
               <ParamInput

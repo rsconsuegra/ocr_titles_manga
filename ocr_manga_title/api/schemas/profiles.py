@@ -15,6 +15,8 @@ class ProfileCreateRequest(BaseModel):
     preprocess_steps: dict[str, dict[str, Any]] | None = None
     ocr_models: dict[str, dict[str, Any]] | None = None
     enable_llm: bool = False
+    llm_provider: str = "openrouter"
+    llm_config: dict[str, Any] | None = None
     is_default: bool = False
 
 
@@ -24,6 +26,8 @@ class ProfileUpdateRequest(BaseModel):
     preprocess_steps: dict[str, dict[str, Any]] | None = None
     ocr_models: dict[str, dict[str, Any]] | None = None
     enable_llm: bool | None = None
+    llm_provider: str | None = None
+    llm_config: dict[str, Any] | None = None
     is_default: bool | None = None
 
 
@@ -36,6 +40,8 @@ class ProfileResponse(BaseModel):
     preprocess_steps: dict | None
     ocr_models: dict | None
     enable_llm: bool
+    llm_provider: str
+    llm_config: dict | None
     is_default: bool
     created_at: datetime
     updated_at: datetime | None

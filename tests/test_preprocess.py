@@ -527,7 +527,7 @@ class TestPreProcessingPipeline:
         }
         pipeline = PreProcessingPipeline(config)
         step_names = [s.name for s in pipeline._steps]
-        assert step_names == ["roi", "grayscale", "upscale", "denoise", "binarize"]
+        assert step_names == ["roi", "upscale", "grayscale", "denoise", "binarize"]
 
     def test_pipeline_process_all_steps(self, test_image_file):
         from ocr_manga_title.preprocess.pipeline import PreProcessingPipeline
@@ -548,7 +548,7 @@ class TestPreProcessingPipeline:
         assert isinstance(result, PreProcessResult)
         assert len(result.steps) == 5
         step_names = [s.step_name for s in result.steps]
-        assert step_names == ["roi", "grayscale", "upscale", "denoise", "binarize"]
+        assert step_names == ["roi", "upscale", "grayscale", "denoise", "binarize"]
         assert result.output_path is not None
 
     def test_pipeline_process_returns_result(self, test_image_file):

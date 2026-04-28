@@ -27,7 +27,7 @@ _VALID_BATCH_RUN_COLS = {
 }
 _VALID_PROFILE_COLS = {
     "name", "description", "preprocess_steps", "ocr_models",
-    "enable_llm", "is_default",
+    "enable_llm", "llm_provider", "llm_config", "is_default",
 }
 
 
@@ -541,6 +541,8 @@ async def create_profile(
     preprocess_steps: dict | None = None,
     ocr_models: dict | None = None,
     enable_llm: bool = False,
+    llm_provider: str = "openrouter",
+    llm_config: dict | None = None,
     is_default: bool = False,
 ) -> PipelineProfile:
     if is_default:
@@ -551,6 +553,8 @@ async def create_profile(
         preprocess_steps=preprocess_steps,
         ocr_models=ocr_models,
         enable_llm=enable_llm,
+        llm_provider=llm_provider,
+        llm_config=llm_config,
         is_default=is_default,
     )
     session.add(profile)

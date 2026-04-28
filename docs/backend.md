@@ -17,9 +17,9 @@
 | `engine/registry.py` | `MODEL_REGISTRY` — single source of truth for OCR models |
 | `engine/ocr_engine.py` | `OCREngine` orchestrator |
 | `engine/tesseract_model.py` | Tesseract adapter (production-ready) |
-| `engine/paddle_model.py` | PaddleOCR adapter (stub) |
-| `engine/easyocr_model.py` | EasyOCR adapter (stub) |
-| `engine/glm_ocr_model.py` | GLM-OCR adapter (stub) |
+| `engine/paddle_model.py` | PaddleOCR adapter (production-ready, multilingual, GPU) |
+| `engine/easyocr_model.py` | EasyOCR adapter (production-ready, multilingual, GPU) |
+| `engine/glm_ocr_model.py` | Vision API adapter (production-ready, OpenAI-compatible) |
 | `exceptions.py` | Exception hierarchy |
 | `postprocess/llm_extractor.py` | OpenRouter LLM title extraction |
 | `postprocess/rule_matcher.py` | ISBN regex + title normalization |
@@ -29,13 +29,14 @@
 | `preprocess/steps/` | 5 preprocessing step implementations |
 | `schemas.py` | Core Pydantic models (AppConfig, ModelConfig, PipelineResult, etc.) |
 | `services/config.py` | `build_run_config_snapshot()` profile helper |
-| `services/image.py` | Base64/numpy image encoding/decoding |
+| `services/cache.py` | Content-addressable image cache (hash, CRUD, async wrappers) |
+| `services/image.py` | Base64/numpy image encoding/decoding + multipart upload helpers |
 | `services/ocr.py` | Model execution helpers |
 | `services/pipeline.py` | Result persistence + catalog sync |
 | `services/preprocess.py` | Step execution helper |
-| `settings.py` | Environment variables + constants |
+| `settings.py` | Environment variables + constants + cache settings |
 | `workers/broker.py` | RedisBroker setup |
-| `workers/ocr_worker.py` | Dramatiq actor `process_pipeline_run` |
+| `workers/ocr_worker.py` | Dramatiq actor with cooperative cancellation + OOM check |
 
 ---
 
@@ -69,9 +70,9 @@ Frozen dict mapping model name → `ModelDescriptor`. Each descriptor contains:
 | Name | Class | Status | Parameters |
 |---|---|---|---|
 | `tesseract` | `TesseractModel` | **Production** | `languages` (multiselect), `psm` (0-13), `oem` (0-3) |
-| `paddle` | `PaddleModel` | Stub | `languages` (text) |
-| `easyocr` | `EasyOCRModel` | Stub | `languages` (text) |
-| `glm_ocr` | `GLMOCRModel` | Stub | `api_endpoint` (text) |
+| `paddle` | `PaddleModel` | **Production** | `languages` (multiselect: en, ja, ch, ko, spa, fra, deu, por, ita), `use_gpu` (boolean) |
+| `easyocr` | `EasyOCRModel` | **Production** | `languages` (multiselect: en, ja, ch_sim, ch_tra, ko, es, fr, de, pt, it), `gpu` (boolean) |
+| `glm_ocr` | `GLMOCRModel` | **Production** | `api_endpoint` (text), `model` (text), `api_key` (text), `prompt` (text) |
 
 **Adding a new model:**
 1. Create a new file in `engine/` implementing `BaseOCRModel`
@@ -179,6 +180,23 @@ Regex-based ISBN extraction and title normalization. No external dependencies.
 
 ## Services Layer
 
+### `services/cache.py`
+
+Content-addressable cache for preprocessed images and OCR results.
+
+| Function | Purpose |
+|---|---|
+| `hash_bytes(data)` | SHA-256 hex digest of raw bytes |
+| `hash_config(config)` | SHA-256 hex digest of JSON-serialized config |
+| `get_preprocessed(session, image_hash, config_hash)` | Lookup cached preprocessed image |
+| `put_preprocessed(session, image_hash, config_hash, path)` | Store preprocessed cache entry |
+| `get_ocr_result(session, image_hash, config_hash)` | Lookup cached OCR result |
+| `put_ocr_result(session, image_hash, config_hash, data)` | Store OCR cache entry |
+| `evict_expired(session)` | Delete all expired cache entries |
+| `run_preprocessing_cached(session, image_bytes, steps_config, ...)` | Cached preprocessing wrapper |
+| `run_ocr_cached(session, image_bytes, model_name, params, ...)` | Cached single-model OCR wrapper |
+| `run_all_models_cached(session, image_bytes, ocr_config, ...)` | Cached multi-model OCR wrapper |
+
 ### `services/image.py`
 
 Base64 ↔ numpy image conversion utilities:
@@ -189,6 +207,9 @@ Base64 ↔ numpy image conversion utilities:
 | `encode_image(image)` | numpy BGR array | base64 PNG data-URL string |
 | `decode_and_save(data_url)` | base64 data-URL string | temp file path (PNG) |
 | `numpy_to_temp_file(image)` | numpy array | temp file path (PNG) |
+| `save_bytes(raw)` | raw image bytes | temp file path (PNG) |
+| `decode_bytes(raw)` | raw image bytes | numpy BGR array |
+| `decode_upload(file)` | UploadFile | numpy BGR array |
 
 ### `services/ocr.py`
 
@@ -252,6 +273,10 @@ Module-level constants loaded from environment variables at import time:
 | `OPENROUTER_REQUEST_TIMEOUT` | 30.0 | LLM request timeout |
 | `OPENROUTER_MAX_RETRIES` | 3 | LLM retry count |
 | `OPENROUTER_API_KEY_PREFIX` | `sk-` | API key validation prefix |
+| `IMAGES_PATH` | `/app/uploads` | Debug image output directory |
+| `CACHE_DIR` | `/app/cache` | Image cache storage directory |
+| `CACHE_TTL_DAYS` | `7` | Cache entry TTL (days) |
+| `CACHE_SWEEPER_INTERVAL_SECONDS` | `3600` | Background sweeper interval |
 
 ---
 
@@ -260,28 +285,33 @@ Module-level constants loaded from environment variables at import time:
 ### Dramatiq Actor: `process_pipeline_run`
 
 ```python
-@dramatiq.actor(max_retries=3, min_backoff=10000, max_backoff=60000, time_limit=300000)
+@dramatiq.actor(max_retries=3, min_backoff=10000, max_backoff=60000, time_limit=900000)
 def process_pipeline_run(run_id: str): ...
 ```
 
 - **Max retries**: 3 (with exponential backoff 10s-60s)
-- **Timeout**: 5 minutes
+- **Timeout**: 15 minutes
 - **PermanentError**: Sets status=failed, does NOT re-raise (no retry)
+- **RunCancelled**: Sets status=failed, does NOT re-raise (no retry)
 - **Other exceptions**: Sets status=failed, re-raises (triggers retry)
 
 ### Worker Processing Flow
 
 1. Creates a **new event loop + DB engine** per invocation (not shared with API)
 2. Loads `PipelineRun` by UUID
-3. Sets `status = "processing"`, commits
-4. Verifies image file exists on disk
-5. **Config resolution**:
+3. **Cooperative checkpoint**: checks DB for cancelled status before proceeding
+4. Sets `status = "processing"`, commits
+5. **OOM pre-flight check**: `_check_available_memory()` reads `/proc/meminfo`, raises PermanentError if < 512MB available
+6. Verifies image file exists on disk
+7. **Config resolution**:
    - If `run.preprocess_config` is set: extracts `ocr_models`, `preprocess_steps`, `enable_llm` from snapshot
    - If null: loads from global files + DB (`load_config()`, `_get_model_configs()`, `load_preprocess_config()`)
-6. Creates `OCREngine` and calls `engine.process(image_path, enable_llm=enable_llm)`
-7. Calls `save_pipeline_results()` to persist OCR + post-processing + catalog rows
-8. Sets `status = "completed"` + `completed_at`
-9. If `run.batch_run_id`: calls `update_batch_progress()` to update batch counters
+8. **Cooperative checkpoint**: checks DB for cancelled status before engine instantiation
+9. Creates `OCREngine` and calls `engine.process(image_path, enable_llm=enable_llm)`
+10. Calls `put_ocr_result()` to cache OCR results
+11. Calls `save_pipeline_results()` to persist OCR + post-processing + catalog rows
+12. Sets `status = "completed"` + `completed_at`
+13. If `run.batch_run_id`: calls `update_batch_progress()` to update batch counters
 
 ### Broker (`workers/broker.py`)
 

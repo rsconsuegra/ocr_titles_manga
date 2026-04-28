@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { createBatch } from "../api/batch";
-import { listProfiles } from "../api/profiles";
 import { triggerPipeline, uploadImages } from "../api/pipeline";
+import { listProfiles } from "../api/profiles";
 import type { PipelineRunResponse, ProfileResponse } from "../api/types";
 import { DsoBadge, DsoButton, DsoCard, DsoErrorBanner, DsoInput, DsoSelect, DsoTable } from "../components/dso";
 import ImageUploader from "../components/ImageUploader";

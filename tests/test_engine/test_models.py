@@ -113,7 +113,7 @@ class TestTesseractModel:
         assert result.processing_time_ms >= 0
 
     def test_tesseract_language_string_format(self):
-        config = ModelConfig(name="tesseract", language="eng")
+        config = ModelConfig(name="tesseract", parameters={"languages": ["eng"]})
         model = TesseractModel(config)
         assert model._lang_string == "eng"
 

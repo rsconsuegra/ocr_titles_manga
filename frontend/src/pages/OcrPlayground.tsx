@@ -1,11 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { exportOCRConfig, getOCRModels, runOCR } from "../api/ocr";
 import type { ModelDescriptorResponse, OCRRunResponse } from "../api/types";
-import { DsoButton, DsoCard, DsoErrorBanner, DsoSelect } from "../components/dso";
-import ConfidenceMeter from "../components/ConfidenceMeter";
+import { DsoButton, DsoErrorBanner, DsoSelect } from "../components/dso";
+import LlmConfigSection from "../components/LlmConfigSection";
+import LlmExtractionCard from "../components/LlmExtractionCard";
+import OcrResultCard from "../components/OcrResultCard";
+import OllamaModelSelector from "../components/OllamaModelSelector";
 import PreprocessStepCard from "../components/PreprocessStepCard";
-import { useFileReader } from "../hooks/useFileReader";
+import PromptSettingsPanel from "../components/PromptSettingsPanel";
+import SingleImageUpload from "../components/SingleImageUpload";
+import { OLLAMA_VISION_MODEL } from "../constants";
+import { useLlmPromptState } from "../hooks/useLlmPromptState";
+import { useOllamaModels } from "../hooks/useOllamaModels";
 
 export default function OcrPlayground() {
   const [models, setModels] = useState<ModelDescriptorResponse[]>([]);
@@ -14,11 +21,13 @@ export default function OcrPlayground() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [params, setParams] = useState<Record<string, Record<string, unknown>>>({});
   const [enableLlm, setEnableLlm] = useState(false);
+  const [llmProvider, setLlmProvider] = useState("openrouter");
+  const [llmModel, setLlmModel] = useState("");
+  const promptState = useLlmPromptState();
   const [result, setResult] = useState<OCRRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const readFile = useFileReader();
+  const { status: ollamaStatus, visionModels, llmModels: ollamaLlmModels } = useOllamaModels();
 
   useEffect(() => {
     getOCRModels()
@@ -32,22 +41,21 @@ export default function OcrPlayground() {
 
   const currentModel = models.find((m) => m.name === selectedModel);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await readFile(file);
-    setImageDataUrl(dataUrl);
-    setImageFile(file);
-    setResult(null);
-  }
-
   async function handleRun() {
     if (!imageFile || !selectedModel) return;
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const resp = await runOCR(imageFile, selectedModel, params[selectedModel] || {}, enableLlm);
+      const resp = await runOCR(
+        imageFile,
+        selectedModel,
+        params[selectedModel] || {},
+        enableLlm,
+        llmProvider,
+        llmModel,
+        promptState.toConfig(),
+      );
       setResult(resp);
     } catch (e) {
       setError(e instanceof Error ? e.message : "OCR run failed");
@@ -78,8 +86,6 @@ export default function OcrPlayground() {
     }
   }
 
-  const cbx = "rounded border-highlight/40 bg-inset accent-teal";
-
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -91,21 +97,23 @@ export default function OcrPlayground() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <div>
-            <p className="tech-label mb-1">Image</p>
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-            <DsoButton variant="secondary" onClick={() => fileRef.current?.click()}>
-              {imageDataUrl ? "Change Image" : "Upload Image"}
-            </DsoButton>
-            {imageDataUrl && (
-              <img src={imageDataUrl} alt="Preview" className="mt-2 max-h-48 rounded border border-highlight/20" />
-            )}
-          </div>
+          <SingleImageUpload
+            imageDataUrl={imageDataUrl}
+            fileName={imageFile?.name ?? ""}
+            onImageChange={(dataUrl, file) => {
+              setImageDataUrl(dataUrl);
+              setImageFile(file);
+              setResult(null);
+            }}
+          />
 
           <DsoSelect
             label="Model"
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
+            onChange={(e) => {
+              setSelectedModel(e.target.value);
+              if (e.target.value === OLLAMA_VISION_MODEL) setEnableLlm(false);
+            }}
           >
             {models.map((m) => (
               <option key={m.name} value={m.name} disabled={!m.available}>
@@ -130,10 +138,50 @@ export default function OcrPlayground() {
             />
           )}
 
-          <label className="flex items-center gap-2 text-sm text-bright">
-            <input type="checkbox" checked={enableLlm} onChange={(e) => setEnableLlm(e.target.checked)} className={cbx} />
-            Post-process with LLM
-          </label>
+          {selectedModel === OLLAMA_VISION_MODEL && ollamaStatus?.configured && (
+            <OllamaModelSelector
+              label="Ollama Vision Model"
+              models={visionModels}
+              value={(params[selectedModel]?.model_name as string) || ""}
+              onChange={(v) =>
+                setParams((prev) => ({
+                  ...prev,
+                  [selectedModel]: { ...prev[selectedModel], model_name: v },
+                }))
+              }
+              emptyMessage="No Ollama vision models found. Pull a vision model (e.g. llava, gemma3) first."
+            />
+          )}
+
+          <LlmConfigSection
+            enableLlm={enableLlm}
+            onEnableLlmChange={setEnableLlm}
+            llmDisabled={selectedModel === OLLAMA_VISION_MODEL}
+            llmProvider={llmProvider}
+            onLlmProviderChange={setLlmProvider}
+            llmModel={llmModel}
+            onLlmModelChange={setLlmModel}
+            ollamaModels={ollamaLlmModels}
+            ollamaStatus={ollamaStatus}
+            radioName="llm_provider_ocr"
+          />
+
+          {enableLlm && (
+            <PromptSettingsPanel
+              systemPrompt={promptState.llmSystemPrompt}
+              onSystemPromptChange={promptState.setLlmSystemPrompt}
+              userPrompt={promptState.llmUserPrompt}
+              onUserPromptChange={promptState.setLlmUserPrompt}
+              temperature={promptState.llmTemperature}
+              onTemperatureChange={promptState.setLlmTemperature}
+              maxOcrChars={promptState.llmMaxOcrChars}
+              onMaxOcrCharsChange={promptState.setLlmMaxOcrChars}
+              showToggle={true}
+              isOpen={promptState.showPromptSettings}
+              onToggle={() => promptState.setShowPromptSettings(!promptState.showPromptSettings)}
+              size="sm"
+            />
+          )}
 
           <DsoButton onClick={handleRun} disabled={loading || !imageFile || !selectedModel} className="w-full">
             {loading ? "Running OCR..." : "Run OCR"}
@@ -145,61 +193,23 @@ export default function OcrPlayground() {
 
           {result && (
             <>
-              <DsoCard>
-                <h3 className="mb-2 text-sm font-semibold text-bright">OCR Output</h3>
-                <div className="mb-2">
-                  <span className="text-xs text-muted">Model:</span>{" "}
-                  <span className="text-sm font-medium text-bright">{result.ocr.model_name}</span>
-                </div>
-                <div className="mb-2">
-                  <span className="text-xs text-muted">Time:</span>{" "}
-                  <span className="text-sm text-bright">{result.ocr.processing_time_ms}ms</span>
-                </div>
-                <div className="mb-3">
-                  <span className="text-xs text-muted">Confidence:</span>
-                  <ConfidenceMeter value={result.ocr.confidence} />
-                </div>
-                <div className="rounded bg-lcd p-3">
-                  <pre className="whitespace-pre-wrap break-words text-sm text-bright/80">
-                    {result.ocr.raw_text || "(empty)"}
-                  </pre>
-                </div>
-                {result.ocr.error && (
-                  <DsoErrorBanner className="mt-2">{result.ocr.error}</DsoErrorBanner>
-                )}
-              </DsoCard>
+              <OcrResultCard
+                modelName={result.ocr.model_name}
+                processingTimeMs={result.ocr.processing_time_ms}
+                confidence={result.ocr.confidence}
+                rawText={result.ocr.raw_text}
+                error={result.ocr.error}
+                variant="full"
+              />
 
               {result.llm && (
-                <DsoCard variant="lcd">
-                  <h3 className="mb-2 text-sm font-semibold text-teal">LLM Extraction</h3>
-                  <div className="space-y-1 text-sm">
-                    {result.llm.title_en && (
-                      <div>
-                        <span className="text-muted">Title (EN):</span>{" "}
-                        <span className="font-medium text-bright">{result.llm.title_en}</span>
-                      </div>
-                    )}
-                    {result.llm.title_ja && (
-                      <div>
-                        <span className="text-muted">Title (JA):</span>{" "}
-                        <span className="font-medium text-bright">{result.llm.title_ja}</span>
-                      </div>
-                    )}
-                    {result.llm.code && (
-                      <div>
-                        <span className="text-muted">Code:</span>{" "}
-                        <span className="font-mono text-bright">{result.llm.code}</span>
-                      </div>
-                    )}
-                    <div>
-                      <span className="text-muted">Confidence:</span>
-                      <ConfidenceMeter value={result.llm.confidence} />
-                    </div>
-                    <div>
-                      <span className="text-muted">Method:</span> <span className="text-bright">{result.llm.source_method}</span>
-                    </div>
-                  </div>
-                </DsoCard>
+                <LlmExtractionCard
+                  titleEn={result.llm.title_en}
+                  titleJa={result.llm.title_ja}
+                  code={result.llm.code}
+                  confidence={result.llm.confidence}
+                  method={result.llm.source_method}
+                />
               )}
             </>
           )}

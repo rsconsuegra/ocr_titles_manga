@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { exportPipeline, getPreprocessSteps, previewStep, previewPipeline } from "../api/preprocess";
+import { exportPipeline, getPreprocessSteps, previewPipeline,previewStep } from "../api/preprocess";
 import type { PipelineStepResult, StepDescriptor } from "../api/types";
 import { DsoButton, DsoSelect } from "../components/dso";
 import ImageCompare from "../components/ImageCompare";
 import PipelineFilmstrip from "../components/PipelineFilmstrip";
 import PreprocessStepCard from "../components/PreprocessStepCard";
+import SingleImageUpload from "../components/SingleImageUpload";
 
 type Tab = "step" | "pipeline";
 
 export default function PreprocessPlayground() {
   const [steps, setSteps] = useState<StepDescriptor[]>([]);
-  const [sourceImage, setSourceImage] = useState<string | null>(null);
+  const [sourceImage, setSourceImage] = useState<string>("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
-  const [sourceFileName, setSourceFileName] = useState<string>("");
   const [tab, setTab] = useState<Tab>("step");
 
   const [selectedStep, setSelectedStep] = useState<string>("grayscale");
@@ -26,41 +26,11 @@ export default function PreprocessPlayground() {
   const [pipelineResults, setPipelineResults] = useState<PipelineStepResult[] | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
 
-  const fileRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     getPreprocessSteps().then((s) => {
       setSteps(s);
       if (s.length > 0 && s[0]) setSelectedStep(s[0].name);
     });
-  }, []);
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSourceFileName(file.name);
-    setSourceFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setSourceImage(reader.result as string);
-    reader.readAsDataURL(file);
-  }, []);
-
-  const handlePaste = useCallback(() => {
-    navigator.clipboard.read().then(async (items) => {
-      for (const item of items) {
-        const imageType = item.types?.find((t) => t.startsWith("image/"));
-        if (imageType) {
-          const blob = await item.getType(imageType);
-          const file = new File([blob], "pasted.png", { type: imageType });
-          setSourceFile(file);
-          setSourceFileName("pasted.png");
-          const reader = new FileReader();
-          reader.onload = () => setSourceImage(reader.result as string);
-          reader.readAsDataURL(blob);
-          return;
-        }
-      }
-    }).catch(() => {});
   }, []);
 
   const handlePreviewStep = useCallback(async () => {
@@ -122,19 +92,17 @@ export default function PreprocessPlayground() {
         </DsoButton>
       </div>
 
-      <div className="flex items-center gap-3">
-        <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-        <DsoButton onClick={() => fileRef.current?.click()}>Upload Image</DsoButton>
-        <DsoButton variant="secondary" onClick={handlePaste}>Paste</DsoButton>
-        {sourceFileName && <span className="text-sm text-muted">{sourceFileName}</span>}
-      </div>
-
-      {sourceImage && (
-        <div className="w-48 neo-deep-inset overflow-hidden rounded">
-          <img src={sourceImage} alt="Source" className="block w-full" />
-          <div className="tech-label bg-panel-light/50 px-2 py-1">Source</div>
-        </div>
-      )}
+      <SingleImageUpload
+        imageDataUrl={sourceImage}
+        fileName={sourceFile?.name ?? ""}
+        showPaste={true}
+        onImageChange={(dataUrl, file) => {
+          setSourceImage(dataUrl);
+          setSourceFile(file);
+          setStepResult(null);
+          setPipelineResults(null);
+        }}
+      />
 
       <div className="flex gap-1 border-b border-highlight/20">
         {(["step", "pipeline"] as Tab[]).map((t) => (

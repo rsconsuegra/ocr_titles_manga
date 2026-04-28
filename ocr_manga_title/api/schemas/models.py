@@ -10,7 +10,7 @@ class ModelConfigResponse(BaseModel):
     is_enabled: bool
     parameters: dict | None = None
     language_hint: str | None = None
-    updated_at: datetime
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

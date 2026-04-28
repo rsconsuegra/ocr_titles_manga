@@ -8,6 +8,7 @@ on any structural or semantic problem.
 import functools
 import logging
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -18,6 +19,7 @@ from ocr_manga_title.schemas import AppConfig, ModelConfig, PreProcessConfig
 from ocr_manga_title.settings import (
     CONFIG_PATH,
     OCR_CONFIG_PATH,
+    OPENROUTER_API_KEY,
     PREPROCESS_CONFIG_PATH,
 )
 
@@ -57,6 +59,11 @@ def load_config(config_path: str | Path = CONFIG_PATH) -> AppConfig:
         raise ConfigurationError(
             f"Invalid TOML syntax: {e}", file_path=str(config_path)
         ) from e
+
+    if "openrouter" in data and "api_key" not in data.get("openrouter", {}):
+        env_key = OPENROUTER_API_KEY
+        if env_key:
+            data.setdefault("openrouter", {})["api_key"] = env_key
 
     try:
         return AppConfig(**data)
@@ -159,3 +166,62 @@ def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> 
         return disabled
 
     return data
+
+
+@dataclass(frozen=True)
+class ResolvedModelConfig:
+    """Merged model config: YAML defaults + optional DB override."""
+
+    name: str
+    enabled: bool
+    parameters: dict
+
+
+def resolve_model_configs(db_overrides: dict[str, dict]) -> dict[str, ResolvedModelConfig]:
+    """Merge registry defaults, YAML config, and DB overrides into final configs.
+
+    Resolution order (later wins):
+      1. Registry descriptor param defaults
+      2. ``config/ocrs.yaml`` values (``enabled`` + param overrides)
+      3. DB row values (only for models where a row exists)
+
+    Args:
+        db_overrides: Mapping of model name to a dict with optional keys
+            ``is_enabled`` and ``parameters``.  Only models present in this
+            dict are treated as having a DB override.
+
+    Returns:
+        Mapping of model name to :class:`ResolvedModelConfig`.
+
+    """
+    try:
+        yaml_configs = load_ocr_config()
+    except (ConfigurationError, Exception):
+        yaml_configs = {}
+
+    resolved: dict[str, ResolvedModelConfig] = {}
+
+    for name, descriptor in MODEL_REGISTRY.items():
+        registry_defaults = {p.name: p.default for p in descriptor.params}
+
+        yaml_cfg = yaml_configs.get(name)
+        yaml_enabled = yaml_cfg.enabled if yaml_cfg else True
+        yaml_params = yaml_cfg.parameters if yaml_cfg else {}
+
+        merged_params = {**registry_defaults, **yaml_params}
+
+        db_row = db_overrides.get(name)
+        if db_row is not None:
+            enabled = db_row.get("is_enabled", yaml_enabled)
+            if db_row.get("parameters"):
+                merged_params = {**merged_params, **db_row["parameters"]}
+        else:
+            enabled = yaml_enabled
+
+        resolved[name] = ResolvedModelConfig(
+            name=name,
+            enabled=enabled,
+            parameters=merged_params,
+        )
+
+    return resolved

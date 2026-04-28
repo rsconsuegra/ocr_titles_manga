@@ -1,7 +1,7 @@
 import { DsoProgressBar } from "./dso";
 
 function getColor(value: number): string | undefined {
-  if (value < 0.3) return "bg-amber";
+  if (value < 0.3) return "bg-red-500";
   if (value < 0.7) return "bg-amber";
   return undefined;
 }

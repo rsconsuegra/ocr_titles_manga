@@ -36,6 +36,8 @@ async def create_profile_endpoint(
             preprocess_steps=body.preprocess_steps,
             ocr_models=body.ocr_models,
             enable_llm=body.enable_llm,
+            llm_provider=body.llm_provider,
+            llm_config=body.llm_config,
             is_default=body.is_default,
         )
     except IntegrityError as e:

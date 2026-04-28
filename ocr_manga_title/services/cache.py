@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -211,7 +212,9 @@ async def run_preprocessing_cached(
         return cached
 
     image_array = decode_bytes(raw)
-    result_path = run_preprocessing_pipeline_from_array(image_array, steps_config)
+    result_path = await asyncio.to_thread(
+        run_preprocessing_pipeline_from_array, image_array, steps_config
+    )
 
     cached_path = await put_preprocessed(session, image_hash, config_hash, result_path)
     logger.info("Preprocessing cache miss: %s (cached)", image_hash[:12])
@@ -233,7 +236,7 @@ async def run_ocr_cached(
         logger.info("OCR cache hit: %s/%s", image_hash[:12], model_name)
         return cached
 
-    result = run_single_model(model_name, image_path, params)
+    result = await asyncio.to_thread(run_single_model, model_name, image_path, params)
 
     if not result.error:
         await put_ocr_result(session, image_hash, config_hash, result)

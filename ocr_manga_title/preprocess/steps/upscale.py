@@ -2,6 +2,8 @@
 
 import hashlib
 import logging
+import os
+import time
 from pathlib import Path
 
 import cv2
@@ -11,7 +13,14 @@ from ocr_manga_title.preprocess.base import BasePreProcessor
 
 logger = logging.getLogger(__name__)
 
-MODEL_DIR = Path.home() / ".ocr_manga_title" / "models"
+MODEL_DIR = Path(os.getenv("MODEL_DIR", Path.home() / ".ocr_manga_title" / "models"))
+
+DNN_MEMORY_OVERHEAD = {
+    "fsrcnn": 3,
+    "edsr": 8,
+}
+
+MEMORY_SAFETY_FACTOR = 0.6
 
 MODEL_URLS = {
     "fsrcnn": "https://raw.githubusercontent.com/Saafke/FSRCNN_tensorflow/master/models/FSRCNN_x{scale}.pb",
@@ -40,6 +49,11 @@ class UpscaleStep(BasePreProcessor):
     def is_available(self) -> bool:
         """Whether the step's runtime dependencies are installed."""
         return True
+
+    @property
+    def timeout(self) -> int:
+        """DNN upscaling can be slow on large images."""
+        return 300
 
     def _get_model_path(self, method: str, scale: int) -> Path:
         return MODEL_DIR / f"{method.upper()}_x{scale}.pb"
@@ -80,7 +94,12 @@ class UpscaleStep(BasePreProcessor):
 
         import urllib.request
 
-        urllib.request.urlretrieve(url, str(model_path))
+        try:
+            with urllib.request.urlopen(url, timeout=120) as resp:
+                model_path.write_bytes(resp.read())
+        except Exception as e:
+            model_path.unlink(missing_ok=True)
+            raise RuntimeError(f"Failed to download {model_path.name}: {e}") from e
 
         if not self._verify_model_hash(model_path):
             model_path.unlink(missing_ok=True)
@@ -106,11 +125,14 @@ class UpscaleStep(BasePreProcessor):
         return False
 
     def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
-        """Upscale the image using the configured method and scale factor."""
         method = config.get("method", "cubic")
         scale_factor = config.get("scale_factor", 2)
 
+        start = time.monotonic()
+        logger.info("Upscaling with %s x%d started", method.upper(), scale_factor)
+
         if scale_factor < 2:
+            logger.info("Upscaling skipped (scale_factor < 2)")
             return image, {
                 "method": method,
                 "scale_factor": scale_factor,
@@ -118,14 +140,18 @@ class UpscaleStep(BasePreProcessor):
             }
 
         if method == "cubic":
-            return self._upscale_cubic(image, scale_factor)
+            result, meta = self._upscale_cubic(image, scale_factor)
         elif method in ("fsrcnn", "edsr"):
-            return self._upscale_dnn(image, method, scale_factor)
+            result, meta = self._upscale_dnn(image, method, scale_factor)
         elif method == "realesrgan":
-            return self._upscale_realesrgan(image, scale_factor)
+            result, meta = self._upscale_realesrgan(image, scale_factor)
         else:
             logger.warning("Unknown upscale method '%s', falling back to cubic", method)
-            return self._upscale_cubic(image, scale_factor)
+            result, meta = self._upscale_cubic(image, scale_factor)
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.info("Upscaling with %s x%d finished in %dms", method.upper(), scale_factor, elapsed_ms)
+        return result, meta
 
     def _upscale_cubic(self, image: np.ndarray, scale: int) -> tuple[np.ndarray, dict]:
         h, w = image.shape[:2]
@@ -140,31 +166,83 @@ class UpscaleStep(BasePreProcessor):
         }
         return result, meta
 
+    @staticmethod
+    def _available_memory_bytes() -> int:
+        try:
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    if line.startswith("MemAvailable:"):
+                        return int(line.split()[1]) * 1024
+        except (OSError, ValueError):
+            pass
+        return 0
+
+    def _estimate_dnn_peak_bytes(self, h: int, w: int, method: str, scale: int) -> int:
+        overhead = DNN_MEMORY_OVERHEAD.get(method, 6)
+        output_pixels = h * w * scale * scale
+        return output_pixels * 3 * 4 * overhead
+
     def _upscale_dnn(
         self, image: np.ndarray, method: str, scale: int
     ) -> tuple[np.ndarray, dict]:
+        h, w = image.shape[:2]
+        estimated_peak = self._estimate_dnn_peak_bytes(h, w, method, scale)
+        available = self._available_memory_bytes()
+
+        if available > 0:
+            budget = available * MEMORY_SAFETY_FACTOR
+            if estimated_peak > budget:
+                raise ValueError(
+                    f"Insufficient memory for {method.upper()} x{scale} upscaling "
+                    f"({w}x{h} → {w * scale}x{h * scale}). "
+                    f"Estimated peak: {estimated_peak / 1e9:.1f} GB, "
+                    f"available budget: {budget / 1e9:.1f} GB "
+                    f"({available / 1e9:.1f} GB RAM available × "
+                    f"{MEMORY_SAFETY_FACTOR:.0%} safety margin). "
+                    f"Use a smaller image, lower scale factor, or cubic interpolation."
+                )
+            logger.info(
+                "DNN memory check: estimated %.1f GB peak vs %.1f GB budget",
+                estimated_peak / 1e9,
+                budget / 1e9,
+            )
+
         if not self._is_method_available(method, scale):
             try:
                 self._download_model(method, scale)
             except Exception as e:
-                logger.warning(
-                    "Failed to download %s model: %s, falling back to cubic", method, e
-                )
-                return self._upscale_cubic(image, scale)
+                raise RuntimeError(
+                    f"Failed to download {method.upper()} model: {e}"
+                ) from e
 
         model_path = self._get_model_path(method, scale)
         sr = cv2.dnn_superres.DnnSuperResImpl_create()
         sr.readModel(str(model_path))
         sr.setModel(method.lower(), scale)
 
-        result = sr.upsample(image)
-        h, w = image.shape[:2]
+        grayscale_input = image.ndim == 2
+        if grayscale_input:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+        try:
+            result = sr.upsample(image)
+        except (MemoryError, cv2.error) as e:
+            raise RuntimeError(
+                f"{method.upper()} x{scale} upscaling ran out of memory on "
+                f"{w}x{h} image ({available / 1e9:.1f} GB RAM available). "
+                f"Use a smaller image, lower scale factor, or cubic interpolation."
+            ) from e
+
+        if grayscale_input:
+            result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+
         oh, ow = result.shape[:2]
         return result, {
             "method": method,
             "scale_factor": scale,
             "input_size": (w, h),
             "output_size": (ow, oh),
+            "grayscale_input": grayscale_input,
         }
 
     def _upscale_realesrgan(

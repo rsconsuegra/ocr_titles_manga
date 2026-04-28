@@ -14,6 +14,7 @@ from ocr_manga_title.api.schemas.ocr import (
     OCRExportRequest,
     OCRRunResponse,
 )
+from ocr_manga_title.config import resolve_model_configs
 from ocr_manga_title.db.models import ModelConfig as ModelConfigDB
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
 from ocr_manga_title.services.cache import hash_bytes, run_ocr_cached
@@ -28,14 +29,19 @@ router = APIRouter()
 
 @router.get("/registry", response_model=list[ModelDescriptorResponse])
 async def list_ocr_models(db: AsyncSession = Depends(get_db)):
-    """Return all OCR model descriptors with availability and DB enabled status."""
+    """Return all OCR model descriptors with availability and effective enabled status."""
     stmt = select(ModelConfigDB)
     result = await db.execute(stmt)
-    db_configs = {m.model_name: m for m in result.scalars().all()}
+    db_rows = {
+        m.model_name: {"is_enabled": m.is_enabled, "parameters": m.parameters or {}}
+        for m in result.scalars().all()
+    }
+
+    resolved = resolve_model_configs(db_rows)
 
     response = []
     for name, descriptor in MODEL_REGISTRY.items():
-        db_cfg = db_configs.get(name)
+        cfg = resolved.get(name)
         available = check_model_availability(name)
 
         response.append(
@@ -48,7 +54,7 @@ async def list_ocr_models(db: AsyncSession = Depends(get_db)):
                     for p in descriptor.params
                 ],
                 available=available,
-                enabled=db_cfg.is_enabled if db_cfg else False,
+                enabled=cfg.enabled if cfg else False,
             )
         )
     return response
@@ -60,6 +66,12 @@ async def run_ocr(
     model_name: str = Form(...),
     params: str = Form("{}"),
     enable_llm: bool = Form(False),
+    llm_provider: str = Form("openrouter"),
+    llm_model: str = Form(""),
+    llm_system_prompt: str = Form(""),
+    llm_user_prompt: str = Form(""),
+    llm_temperature: str = Form(""),
+    llm_max_ocr_chars: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     """Run a single OCR model on the given image, optionally with LLM post-processing."""
@@ -101,7 +113,20 @@ async def run_ocr(
 
         llm_data = None
         if enable_llm and ocr_data.raw_text.strip():
-            llm_data = run_llm_extraction(ocr_data.raw_text)
+            llm_cfg: dict | None = None
+            if llm_system_prompt or llm_user_prompt or llm_temperature or llm_max_ocr_chars:
+                llm_cfg = {
+                    "system_prompt": llm_system_prompt,
+                    "user_prompt_template": llm_user_prompt or "{ocr_text}",
+                    "temperature": float(llm_temperature) if llm_temperature else 0.1,
+                    "max_ocr_chars": int(llm_max_ocr_chars) if llm_max_ocr_chars else 0,
+                }
+            llm_data = run_llm_extraction(
+                ocr_data.raw_text,
+                provider=llm_provider,
+                llm_model=llm_model or None,
+                llm_config=llm_cfg,
+            )
 
         return OCRRunResponse(ocr=ocr_data, llm=llm_data)
     finally:

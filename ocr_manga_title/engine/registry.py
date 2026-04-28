@@ -173,9 +173,38 @@ def _build_glm_ocr(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
     )
 
 
+def _build_ollama_vision(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
+    return ModelDescriptor(
+        name="ollama_vision",
+        label="Ollama Vision",
+        description="Ollama multimodal model for OCR via native /api/chat endpoint. Model selection is dynamic.",
+        model_cls=model_cls,
+        params=[
+            ParamDescriptor(
+                name="prompt",
+                type="textarea",
+                default="Extract all text from this image.",
+                label="Extraction Prompt",
+                description="Instructions sent to the vision model with the image.",
+            ),
+            ParamDescriptor(
+                name="temperature",
+                type="number",
+                default=0.1,
+                label="Temperature",
+                description="Sampling temperature.",
+                min=0.0,
+                max=2.0,
+                step=0.1,
+            ),
+        ],
+    )
+
+
 def _build_registry() -> dict[str, ModelDescriptor]:
     from ocr_manga_title.engine.easyocr_model import EasyOCRModel
     from ocr_manga_title.engine.glm_ocr_model import GLMOCRModel
+    from ocr_manga_title.engine.ollama_vision_model import OllamaVisionModel
     from ocr_manga_title.engine.paddle_model import PaddleModel
     from ocr_manga_title.engine.tesseract_model import TesseractModel
 
@@ -184,6 +213,7 @@ def _build_registry() -> dict[str, ModelDescriptor]:
         "paddle": _build_paddle(PaddleModel),
         "easyocr": _build_easyocr(EasyOCRModel),
         "glm_ocr": _build_glm_ocr(GLMOCRModel),
+        "ollama_vision": _build_ollama_vision(OllamaVisionModel),
     }
 
 

@@ -3,32 +3,32 @@ BUILDER = manga-ocr
 .PHONY: test lint run setup notebook db-up db-down migrate migrate-create clean worker api frontend setup-db typecheck security frontend-lint frontend-format dev dev-cpu dev-gpu stop docker-build docker-build-gpu docker-up docker-down reset ensure-builder
 
 setup:
-	uv sync
+	uv sync --extra cpu --group dev
 
 test:
-	uv run pytest tests/ -v
+	uv run --extra cpu pytest tests/ -v
 
 lint:
-	uv run ruff check --config .code_quality/ruff.toml ocr_manga_title
-	uv run ruff format --config .code_quality/ruff.toml --check ocr_manga_title
+	uv run --extra cpu ruff check --config .code_quality/ruff.toml ocr_manga_title
+	uv run --extra cpu ruff format --config .code_quality/ruff.toml --check ocr_manga_title
 
 typecheck:
-	uv run mypy --config-file .code_quality/mypy.ini ocr_manga_title/
+	uv run --extra cpu mypy --config-file .code_quality/mypy.ini ocr_manga_title/
 
 security:
-	uv run bandit -c .code_quality/bandit.yaml -r ocr_manga_title/
+	uv run --extra cpu bandit -c .code_quality/bandit.yaml -r ocr_manga_title/
 
 run:
-	uv run python -m ocr_manga_title.cli
+	uv run --extra cpu python -m ocr_manga_title.cli
 
 api:
-	uv run uvicorn ocr_manga_title.api.app:create_app --factory --host 0.0.0.0 --port 8000
+	uv run --extra cpu uvicorn ocr_manga_title.api.app:create_app --factory --host 0.0.0.0 --port 8000
 
 frontend:
 	cd frontend && npm run dev
 
 notebook:
-	uv run jupyter notebook notebooks/
+	uv run --extra cpu jupyter notebook notebooks/
 
 db-up:
 	colima start 2>/dev/null || true
@@ -40,13 +40,13 @@ db-down:
 	docker compose -f docker-compose.dev.yml down
 
 migrate:
-	uv run alembic upgrade head
+	uv run --extra cpu alembic upgrade head
 
 migrate-down:
-	uv run alembic downgrade -1
+	uv run --extra cpu alembic downgrade -1
 
 migrate-create:
-	uv run alembic revision --autogenerate -m "$(msg)"
+	uv run --extra cpu alembic revision --autogenerate -m "$(msg)"
 
 setup-db: db-up migrate
 
@@ -59,7 +59,7 @@ reset: docker-down
 	@echo "Reset complete. Run 'make dev' to start fresh."
 
 worker:
-	uv run dramatiq ocr_manga_title.workers.ocr_worker
+	uv run --extra cpu dramatiq ocr_manga_title.workers.ocr_worker
 
 frontend-lint:
 	cd frontend && npm run lint
@@ -74,20 +74,20 @@ ensure-builder:
 
 dev: ensure-builder
 	colima start 2>/dev/null || true
-	docker compose up --build
+	OCR_EXTRA=cpu docker compose up --build
 
 dev-cpu: ensure-builder
 	colima start 2>/dev/null || true
-	TORCH_VARIANT=cpu docker compose up --build
+	OCR_EXTRA=cpu docker compose up --build
 
 dev-gpu: ensure-builder
-	TORCH_VARIANT=cuda docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+	OCR_EXTRA=cu126 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 
 docker-build: ensure-builder
-	TORCH_VARIANT=${TORCH_VARIANT:-cpu} docker compose build
+	OCR_EXTRA=$${OCR_EXTRA:-cpu} docker compose build
 
 docker-build-gpu: ensure-builder
-	TORCH_VARIANT=cuda docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
+	OCR_EXTRA=cu126 docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
 
 docker-up:
 	docker compose up -d

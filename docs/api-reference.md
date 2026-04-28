@@ -15,7 +15,7 @@
 | Router | Prefix | File | Endpoints |
 |---|---|---|---|
 | Inputs | `/api/v1/inputs` | `api/routes/inputs.py` | 2 |
-| Pipeline | `/api/v1/pipeline` | `api/routes/pipeline.py` | 3 |
+| Pipeline | `/api/v1/pipeline` | `api/routes/pipeline.py` | 4 |
 | Results | `/api/v1/results` | `api/routes/results.py` | 2 |
 | Catalog | `/api/v1/catalog` | `api/routes/catalog.py` | 4 |
 | Models | `/api/v1/models` | `api/routes/models.py` | 2 |
@@ -25,7 +25,7 @@
 | Batches | `/api/v1/batches` | `api/routes/batches.py` | 4 |
 | Profiles | `/api/v1/profiles` | `api/routes/profiles.py` | 6 |
 
-**Total: 31 endpoints**
+**Total: 32 endpoints**
 
 ---
 
@@ -130,6 +130,19 @@ Get detailed run with nested OCR and post-processing results.
   ]
 }
 ```
+
+### `POST /runs/{run_id}/cancel`
+
+Cancel a pending or processing pipeline run.
+
+- **Status check**: Returns 409 if status is `completed`, `failed`, or `cancelled`
+
+**Response**:
+```json
+{ "message": "Pipeline run cancelled", "run_id": "uuid" }
+```
+
+The worker cooperatively checks for cancellation at checkpoints before setting `status=processing` and before calling `engine.process()`.
 
 ---
 
@@ -248,14 +261,10 @@ List all preprocessing step descriptors in canonical order.
 
 Preview a single preprocessing step on an image.
 
+- **Content-Type**: `multipart/form-data`
+- **Form Fields**: `file` (image file), `step_name` (string), `params` (JSON string, default `"{}"`)
+
 **Request**: `PreviewStepRequest`
-```json
-{
-  "image": "data:image/png;base64,...",
-  "step_name": "binarize",
-  "params": {"method": "otsu", "invert": false}
-}
-```
 
 **Response**: `PreviewStepResponse`
 ```json
@@ -273,17 +282,10 @@ Preview a single preprocessing step on an image.
 
 Preview the full preprocessing pipeline, returning an image after each step.
 
+- **Content-Type**: `multipart/form-data`
+- **Form Fields**: `file` (image file), `steps` (JSON string, default `"{}"`)
+
 **Request**: `PreviewPipelineRequest`
-```json
-{
-  "image": "data:image/png;base64,...",
-  "steps": {
-    "grayscale": {"enabled": true},
-    "upscale": {"enabled": true, "method": "cubic", "scale_factor": 2},
-    "binarize": {"enabled": false}
-  }
-}
-```
 
 **Response**: `PreviewPipelineResponse`
 
@@ -323,15 +325,10 @@ List all OCR model descriptors from the registry with availability status and DB
 
 Run a single OCR model on an image (playground mode).
 
+- **Content-Type**: `multipart/form-data`
+- **Form Fields**: `file` (image file), `model_name` (string), `params` (JSON string, default `"{}"`), `enable_llm` (boolean, default false)
+
 **Request**: `OCRRunRequest`
-```json
-{
-  "image": "data:image/png;base64,...",
-  "model_name": "tesseract",
-  "params": {"languages": ["eng", "jpn"], "psm": 6},
-  "enable_llm": false
-}
-```
 
 **Response**: `OCRRunResponse`
 ```json
@@ -359,21 +356,10 @@ Export OCR model config as YAML matching `ocrs.yaml` format.
 
 Run the full pipeline statelessly (no DB persistence). Optionally loads a profile as defaults.
 
+- **Content-Type**: `multipart/form-data`
+- **Form Fields**: `file` (image file), `preprocess_steps` (JSON string), `ocr_models` (JSON string), `enable_llm` (boolean), `profile_id` (string, optional)
+
 **Request**: `QuickRunRequest`
-```json
-{
-  "image": "data:image/png;base64,...",
-  "preprocess_steps": {
-    "grayscale": {"enabled": true},
-    "upscale": {"enabled": true, "method": "cubic", "scale_factor": 2}
-  },
-  "ocr_models": {
-    "tesseract": {"enabled": true, "languages": ["eng", "jpn"], "psm": 6}
-  },
-  "enable_llm": true,
-  "profile_id": "uuid-or-null"
-}
-```
 
 If `profile_id` is provided, the profile config is loaded as defaults and any inline fields override them.
 
@@ -531,7 +517,7 @@ Set a profile as the default. Unsets any previous default.
 {
   "id": "uuid",
   "input_image_path": "string",
-  "status": "pending | processing | completed | failed",
+  "status": "pending | processing | completed | failed | cancelled",
   "error_message": "string | null",
   "created_at": "datetime",
   "completed_at": "datetime | null"
@@ -553,7 +539,7 @@ Extends `PipelineRunResponse` with:
 {
   "id": "uuid",
   "name": "string | null",
-  "status": "pending | processing | completed | partial_failure | failed",
+  "status": "pending | processing | completed | partial_failure | failed | cancelled",
   "total_count": 5,
   "completed_count": 3,
   "failed_count": 1,

@@ -1,16 +1,16 @@
 FROM python:3.12-slim AS builder
 
-ARG TORCH_VARIANT=cpu
+ARG OCR_EXTRA=cpu
 
 COPY --from=ghcr.io/astral-sh/uv:0.7.13 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
 COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --frozen --no-dev --extra ${TORCH_VARIANT}
+RUN uv sync --frozen --no-dev --extra ${OCR_EXTRA}
 
 COPY . .
-RUN uv sync --frozen --no-dev --extra ${TORCH_VARIANT}
+RUN uv sync --frozen --no-dev --extra ${OCR_EXTRA}
 
 FROM python:3.12-slim
 
@@ -42,7 +42,14 @@ COPY --from=builder --chown=appuser:appuser /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p /app/uploads && chown -R appuser:appuser /app/uploads
+RUN mkdir -p /app/uploads /app/cache && chown -R appuser:appuser /app/uploads /app/cache
+
+ENV MODEL_DIR=/app/models
+RUN mkdir -p /app/models && python -c "\
+from ocr_manga_title.preprocess.steps.upscale import UpscaleStep; \
+step = UpscaleStep(); \
+[step._download_model(m, s) for m in ('fsrcnn', 'edsr') for s in (2, 3)]" && \
+    chown -R appuser:appuser /app/models
 
 USER appuser
 

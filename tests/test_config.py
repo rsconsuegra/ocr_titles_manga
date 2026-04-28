@@ -115,8 +115,7 @@ models:
     languages: ["eng", "jpn"]
 """)
         config = load_ocr_config(f)
-        assert config["tesseract"].language == ["eng", "jpn"]
-        assert "languages" not in config["tesseract"].parameters
+        assert config["tesseract"].parameters["languages"] == ["eng", "jpn"]
 
     def test_load_ocr_config_typo_raises_validation_error(self, tmp_path):
         f = tmp_path / "typo.yaml"
@@ -124,27 +123,26 @@ models:
 models:
   tesseract:
     enabled: true
-    langauges: ["eng", "jpn"]
+    enabeld: true
 """)
         with pytest.raises(ConfigurationError):
             load_ocr_config(f)
 
     def test_model_config_typo_raises_validation_error_directly(self):
         with pytest.raises(ValidationError):
-            ModelConfig(__key__="tesseract", langauges=["eng", "jpn"])
+            ModelConfig(__key__="tesseract", enabeld=True)
 
     def test_model_config_routes_extras_to_parameters(self):
         mc = ModelConfig(__key__="tesseract", psm=3, oem=3, languages=["eng", "jpn"])
         assert mc.name == "tesseract"
-        assert mc.language == ["eng", "jpn"]
+        assert mc.parameters["languages"] == ["eng", "jpn"]
         assert mc.parameters["psm"] == 3
         assert mc.parameters["oem"] == 3
 
-    def test_model_config_languages_aliased(self):
+    def test_model_config_languages_in_parameters(self):
         mc = ModelConfig(__key__="paddle", languages=["en", "ja"])
         assert mc.name == "paddle"
-        assert mc.language == ["en", "ja"]
-        assert "languages" not in mc.parameters
+        assert mc.parameters["languages"] == ["en", "ja"]
 
     def test_load_ocr_config_unknown_model_name(self, tmp_path, caplog):
         import logging

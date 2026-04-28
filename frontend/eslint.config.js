@@ -37,8 +37,8 @@ export default tseslint.config(
       ...reactHooks.configs.flat["recommended-latest"].rules,
       ...reactRefresh.configs.vite.rules,
 
-      "no-unused-vars": "warn",
-      "@typescript-eslint/no-unused-vars": "warn",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-definitions": ["warn", "interface"],
       "prefer-const": "warn",
 

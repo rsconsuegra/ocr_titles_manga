@@ -71,7 +71,6 @@ class TestModelConfig:
     def test_model_config_defaults(self):
         mc = ModelConfig(name="test")
         assert mc.enabled is True
-        assert mc.language == "en"
         assert mc.parameters == {}
 
     def test_model_config_extract_name_from_key(self):

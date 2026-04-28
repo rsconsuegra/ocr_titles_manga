@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { deleteProfile, listProfiles, setDefaultProfile } from "../api/profiles";
 import type { ProfileResponse } from "../api/types";
-import { DsoBadge, DsoButton, DsoErrorBanner, DsoTable } from "../components/dso";
+import { DsoBadge, DsoButton, DsoErrorBanner, DsoPagination, DsoTable } from "../components/dso";
+
+const LIMIT = 50;
 
 export default function Profiles() {
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
@@ -12,17 +14,12 @@ export default function Profiles() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const limit = 50;
 
-  useEffect(() => {
-    load();
-  }, [offset]);
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await listProfiles(limit, offset);
+      const res = await listProfiles(LIMIT, offset);
       setProfiles(res.items);
       setTotal(res.total);
     } catch (e) {
@@ -30,7 +27,13 @@ export default function Profiles() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [offset]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- data-fetching effect */
+  useEffect(() => {
+    load();
+  }, [load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete profile "${name}"?`)) return;
@@ -50,9 +53,6 @@ export default function Profiles() {
       setError(e instanceof Error ? e.message : "Failed to set default");
     }
   }
-
-  const hasPrev = offset > 0;
-  const hasNext = offset + limit < total;
 
   return (
     <div>
@@ -100,8 +100,11 @@ export default function Profiles() {
                 header: "LLM",
                 render: (p: ProfileResponse) => (
                   <span className={`text-xs ${p.enable_llm ? "text-teal" : "text-muted"}`}>
-                    <span className={`led ${p.enable_llm ? "led-active" : "led-off"}`} style={{ width: 6, height: 6, display: "inline-block", marginRight: 4, verticalAlign: "middle" }} />
+                    <span className={`led ${p.enable_llm ? "led-active" : "led-off"} size-1.5 inline-block mr-1 align-middle`} />
                     {p.enable_llm ? "Enabled" : "Disabled"}
+                    {p.enable_llm && p.llm_provider && (
+                      <span className="ml-1 text-muted">({p.llm_provider === "ollama" ? "Ollama" : "OpenRouter"})</span>
+                    )}
                   </span>
                 ),
               },
@@ -114,7 +117,7 @@ export default function Profiles() {
               {
                 header: "",
                 render: (p: ProfileResponse) => (
-                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <>
                     <button
                       onClick={() => navigate(`/profiles/${p.id}/edit`)}
                       className="text-xs font-medium text-teal hover:text-bright transition-colors"
@@ -128,7 +131,7 @@ export default function Profiles() {
                     >
                       Delete
                     </DsoButton>
-                  </div>
+                  </>
                 ),
               },
             ]}
@@ -136,26 +139,15 @@ export default function Profiles() {
             keyFn={(p) => p.id}
           />
 
-          {(hasPrev || hasNext) && (
-            <div className="mt-4 flex items-center justify-between">
-              <DsoButton
-                variant="secondary"
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                disabled={!hasPrev}
-              >
-                Previous
-              </DsoButton>
-              <span className="tech-label">
-                {offset + 1}&ndash;{Math.min(offset + limit, total)} of {total}
-              </span>
-              <DsoButton
-                variant="secondary"
-                onClick={() => setOffset(offset + limit)}
-                disabled={!hasNext}
-              >
-                Next
-              </DsoButton>
-            </div>
+          {total > LIMIT && (
+            <DsoPagination
+              page={Math.floor(offset / LIMIT) + 1}
+              totalPages={Math.ceil(total / LIMIT)}
+              totalItems={total}
+              pageSize={LIMIT}
+              onPageChange={(p) => setOffset((p - 1) * LIMIT)}
+              className="mt-4"
+            />
           )}
         </>
       )}

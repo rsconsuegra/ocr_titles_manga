@@ -1,4 +1,4 @@
-import { type SelectHTMLAttributes, forwardRef } from "react";
+import { forwardRef,type SelectHTMLAttributes } from "react";
 
 interface DsoSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;

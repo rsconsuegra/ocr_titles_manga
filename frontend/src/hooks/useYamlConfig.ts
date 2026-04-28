@@ -1,5 +1,5 @@
-import { useCallback } from "react";
 import yaml from "js-yaml";
+import { useCallback } from "react";
 
 export interface ParsedYamlConfig {
   config: Record<string, Record<string, unknown>>;

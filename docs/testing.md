@@ -5,7 +5,7 @@
 - **Framework**: pytest + pytest-asyncio
 - **Database**: SQLite in-memory (overridden via fixtures)
 - **HTTP Client**: httpx AsyncClient
-- **300+ tests** across 15 test files
+- **356 tests** across 15 test files
 
 ---
 
@@ -36,7 +36,7 @@ tests/
 │   ├── test_inputs.py              # Upload endpoint tests
 │   ├── test_models_route.py        # Model config endpoint tests
 │   ├── test_ocr_playground.py      # OCR playground tests
-│   ├── test_pipeline.py            # Pipeline trigger/list tests
+│   ├── test_pipeline.py            # Pipeline trigger/list/cancel tests (16 tests)
 │   ├── test_preprocess.py          # Preprocessing playground tests
 │   ├── test_quick_run.py           # Quick run endpoint tests
 │   └── test_results.py             # Results endpoint tests
@@ -46,6 +46,7 @@ tests/
 ├── test_db/                        # ORM and CRUD tests
 ├── test_engine/                    # OCREngine and model adapter tests
 ├── test_postprocess.py             # LLMExtractor + RuleMatcher tests
+├── test_cache.py                   # Image cache service tests (12 tests)
 ├──_preprocess.py                   # Preprocessing step tests
 ├── test_schemas.py                 # Pydantic schema validation tests
 └── test_worker/                    # Dramatiq worker tests
@@ -167,6 +168,10 @@ Worker tests mock the `_run_async` helper or test `_process()` directly with a t
 - **LLM calls**: Mocked via `unittest.mock.patch` on `openai.OpenAI.chat.completions.create`
 - **Tesseract**: Tests use blank images; Tesseract is expected to be installed
 - **Model availability**: `check_model_availability()` is often mocked to return True/False
+
+### Testing Cache Operations
+
+Cache tests mock the database session and verify hash computation, cache lookup, and TTL-based expiration. The cache module uses PostgreSQL-specific `INSERT ... ON CONFLICT` so SQLite is NOT supported for cache tests — mock the session instead.
 
 ---
 

@@ -59,13 +59,26 @@
 │ language_hint    │
 │ updated_at       │
 └──────────────────┘
+
+┌──────────────────┐
+│   image_cache     │
+├──────────────────┤
+│ id (PK, UUID)    │
+│ image_hash       │
+│ config_hash      │
+│ cache_type       │
+│ result_path      │
+│ result_data (JSON)│
+│ created_at       │
+│ expires_at       │
+└──────────────────┘
 ```
 
 ---
 
 ## ORM Models
 
-All models inherit from `Base(DeclarativeBase)` in `db/models.py`.
+All 9 models inherit from `Base(DeclarativeBase)` in `db/models.py`.
 
 ### `PipelineProfile`
 
@@ -93,7 +106,7 @@ Groups multiple `PipelineRun` records for bulk processing.
 |---|---|---|---|---|
 | `id` | UUID | PK | `uuid4()` | |
 | `name` | String(200) | nullable | | Optional human-readable name |
-| `status` | String(20) | NOT NULL | `"pending"` | `pending`, `processing`, `completed`, `partial_failure`, `failed` |
+| `status` | String(20) | NOT NULL | `"pending"` | `pending`, `processing`, `completed`, `partial_failure`, `failed`, `cancelled` |
 | `total_count` | Integer | NOT NULL | | Set at creation |
 | `completed_count` | Integer | NOT NULL | `0` | Updated by `update_batch_progress()` |
 | `failed_count` | Integer | NOT NULL | `0` | Updated by `update_batch_progress()` |
@@ -112,7 +125,7 @@ Tracks a single image through the pipeline.
 | `input_image_path` | String(500) | NOT NULL | | Path to uploaded image on disk |
 | `source_url` | String(1000) | nullable | | Original URL if scraped |
 | `source_platform` | String(50) | nullable | | e.g. `"manual"` |
-| `status` | String(20) | NOT NULL | `"pending"` | `pending`, `processing`, `completed`, `failed` |
+| `status` | String(20) | NOT NULL | `"pending"` | `pending`, `processing`, `completed`, `failed`, `cancelled` |
 | `error_message` | Text | nullable | | Set on failure |
 | `preprocess_config` | JSON | nullable | | Config snapshot from profile (or null for legacy) |
 | `batch_run_id` | UUID FK → `batch_runs.id` | nullable | | Set when part of a batch |
@@ -205,6 +218,24 @@ Per-OCR-model runtime configuration (persisted, mutable at runtime).
 | `language_hint` | String(50) | nullable | | Default language |
 | `updated_at` | DateTime | NOT NULL | `now()` | Auto-updates |
 
+### `ImageCache`
+
+Content-addressable cache for preprocessed images and OCR results.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| `id` | UUID | PK | `uuid4()` | |
+| `image_hash` | String(64) | NOT NULL | | SHA-256 of image bytes |
+| `config_hash` | String(64) | NOT NULL | | SHA-256 of JSON config |
+| `cache_type` | String(20) | NOT NULL | | `"preprocessed"` or `"ocr"` |
+| `result_path` | String(500) | nullable | | Path to cached file (preprocessing) |
+| `result_data` | JSON | nullable | | Cached data (OCR results) |
+| `created_at` | DateTime | NOT NULL | `now()` | |
+| `expires_at` | DateTime | NOT NULL | | TTL-based expiration |
+
+**Unique Index**: `uq_image_cache_lookup` on `(image_hash, config_hash, cache_type)`
+**Index**: `ix_image_cache_expires_at` on `expires_at`
+
 ---
 
 ## CRUD Functions (`db/crud.py`)
@@ -283,6 +314,7 @@ Managed by Alembic. Config in `alembic.ini`, env in `migrations/env.py`.
 | 003 | `003_seed_prompts.py` | Seeds `prompt_versions` with initial LLM extraction prompt |
 | 004 | `004_add_batch_run.py` | Creates `batch_runs` table + adds `batch_run_id` FK to `pipeline_runs` |
 | 005 | `005_add_pipeline_profile.py` | Creates `pipeline_profiles` table + index on `is_default` |
+| 006 | `006_add_image_cache.py` | Creates `image_cache` table with composite unique index + expiration index |
 
 ### Running Migrations
 

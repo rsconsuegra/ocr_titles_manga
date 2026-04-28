@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { getRunDetail, overrideResult, triggerPipeline, cancelRun } from "../api/pipeline";
+import { cancelRun,getRunDetail, overrideResult, triggerPipeline } from "../api/pipeline";
 import type { PostProcessingResultDetail, RunDetailResponse } from "../api/types";
-import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import ConfidenceMeter from "../components/ConfidenceMeter";
+import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import RunStatusBadge from "../components/RunStatusBadge";
 
 export default function RunDetail() {
@@ -19,7 +19,9 @@ export default function RunDetail() {
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const editTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- data-fetching effect */
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -28,15 +30,25 @@ export default function RunDetail() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
+  const isActive = run?.status === "pending" || run?.status === "processing";
+
+  /* eslint-disable react-hooks/exhaustive-deps -- run is only a guard, isActive tracks state */
   useEffect(() => {
-    if (!run || !id) return;
-    if (run.status !== "pending" && run.status !== "processing") return;
+    if (!run || !id || !isActive) return;
     const interval = setInterval(() => {
-      getRunDetail(id).then(setRun);
+      getRunDetail(id).then(setRun).catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
-  }, [run, id]);
+  }, [isActive, id]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  useEffect(() => {
+    return () => {
+      if (editTimeoutRef.current) clearTimeout(editTimeoutRef.current);
+    };
+  }, []);
 
   function startEdit(pp: PostProcessingResultDetail) {
     setEditingResult(pp.id);
@@ -65,7 +77,7 @@ export default function RunDetail() {
         setRun(newRun);
       }
       setSaved(true);
-      setTimeout(() => setEditingResult(null), 1000);
+      editTimeoutRef.current = setTimeout(() => setEditingResult(null), 1000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -164,9 +176,9 @@ export default function RunDetail() {
                 <ConfidenceMeter value={pp.confidence} />
               </div>
               <div className="text-sm">
-                <p><span className="text-muted">EN:</span> <span className="text-bright">{pp.title_en || "—"}</span></p>
-                <p><span className="text-muted">JA:</span> <span className="text-bright">{pp.title_ja || "—"}</span></p>
-                <p><span className="text-muted">Code:</span> <span className="text-bright">{pp.code || "—"}</span></p>
+                <p><span className="text-muted">EN:</span> <span className="text-bright">{pp.title_en || "\u2014"}</span></p>
+                <p><span className="text-muted">JA:</span> <span className="text-bright">{pp.title_ja || "\u2014"}</span></p>
+                <p><span className="text-muted">Code:</span> <span className="text-bright">{pp.code || "\u2014"}</span></p>
               </div>
 
               {editingResult === pp.id ? (

@@ -14,9 +14,8 @@ The application has a multi-layered configuration system with both file-based an
 ├──────────────────┬──────────────┬───────────────────────────┤
 │ Source            │ Type         │ Used By                   │
 ├──────────────────┼──────────────┼───────────────────────────┤
-│ config/configs.   │ TOML file    │ OCREngine (LLM creds),    │
-│   toml            │ (lru_cache)  │ PreProcessingPipeline     │
-│                  │              │ (debug dir)               │
+│ config/configs.   │ TOML file    │ OCREngine (LLM creds)     │
+│   toml            │ (lru_cache)  │                           │
 ├──────────────────┼──────────────┼───────────────────────────┤
 │ config/ocrs.yaml  │ YAML file    │ Seed only — runtime config│
 │                  │ (lru_cache)  │ lives in model_configs DB  │
@@ -45,6 +44,7 @@ The application has a multi-layered configuration system with both file-based an
 - Validates via Pydantic `AppConfig` (has `OpenRouterConfig` sub-model)
 - **Cached** via `@lru_cache(maxsize=1)` — loaded once per process
 - Raises `ConfigurationError` on missing/malformed file
+- Note: `images_path` was removed from configs.toml. `IMAGES_PATH` now comes from env var in `settings.py`
 
 ### `load_ocr_config(config_path) → dict[str, ModelConfig]`
 
@@ -61,6 +61,19 @@ The application has a multi-layered configuration system with both file-based an
 - **NOT cached** — reloaded each call
 - Returns `{"preprocessing": {"enabled": False}}` if file missing (graceful degradation)
 - Used by worker's legacy path when no profile snapshot exists
+
+---
+
+## Cache Settings (`settings.py`)
+
+| Setting | Default | Description |
+|---|---|---|
+| `CACHE_DIR` | `/app/cache` | Directory for cached preprocessing/OCR files |
+| `CACHE_TTL_DAYS` | `7` | Days before cache entries expire |
+| `CACHE_SWEEPER_INTERVAL_SECONDS` | `3600` | Background sweeper run interval (seconds) |
+| `IMAGES_PATH` | `/app/uploads` | Debug image output (env var override) |
+
+The cache sweeper runs as a background task in the FastAPI lifespan (`api/app.py`).
 
 ---
 

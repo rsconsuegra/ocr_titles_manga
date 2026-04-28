@@ -2,7 +2,7 @@
 
 ## System Summary
 
-Manga OCR Title is a full-stack application for extracting manga titles from images using OCR, LLM-based extraction, and rule-based matching. It consists of a **FastAPI** backend, a **React** frontend, and a **Dramatiq/Redis** async worker — all orchestrated via Docker Compose.
+Manga OCR Title is a full-stack application for extracting manga titles from images using OCR, LLM-based extraction, and rule-based matching. It consists of a **FastAPI** backend, a **React** frontend, a **Dramatiq/Redis** async worker, and a **content-addressable image cache** — all orchestrated via Docker Compose.
 
 ---
 
@@ -99,8 +99,15 @@ The system has **two distinct processing paths**:
     │                          Save results to DB
     │                          + update batch progress
     │                                │
+    │                          Cache OCR results
+    │                          via put_ocr_result()
+    │                                │
     │                          Set status=completed
     ◄────────────────────────────────┘
+    
+    Cooperative cancellation checkpoints:
+    • Before setting status=processing (check DB for cancelled)
+    • Before engine.process() (check DB for cancelled)
 ```
 
 ### 2. Quick Run (Stateless / Synchronous)
@@ -108,15 +115,15 @@ The system has **two distinct processing paths**:
 ```
 [Quick Run Page]
   │
-  ├─ Load image as base64
+  ├─ Select image file
   ├─ Optionally configure preprocessing + OCR models
   ├─ Optionally select profile (loads defaults)
   │
   ▼
 POST /run/quick
-  { image, preprocess_steps, ocr_models, enable_llm, profile_id? }
+  multipart/form-data: file, preprocess_steps, ocr_models, enable_llm, profile_id
   │
-  ├─ Decode image
+  ├─ Read file bytes + decode
   ├─ If preprocess_steps: run preprocessing pipeline
   ├─ Run all enabled OCR models
   ├─ If enable_llm: run LLM extraction on best result
@@ -147,9 +154,9 @@ ocr_manga_title/
 │   ├── registry.py             # MODEL_REGISTRY (4 models)
 │   ├── ocr_engine.py           # OCREngine orchestrator
 │   ├── tesseract_model.py      # Tesseract adapter (production)
-│   ├── paddle_model.py         # PaddleOCR adapter (stub)
-│   ├── easyocr_model.py        # EasyOCR adapter (stub)
-│   └── glm_ocr_model.py       # GLM-OCR adapter (stub)
+│   ├── paddle_model.py         # PaddleOCR adapter (production)
+│   ├── easyocr_model.py        # EasyOCR adapter (production)
+│   └── glm_ocr_model.py       # Vision API adapter (production)
 ├── exceptions.py               # Exception hierarchy
 ├── postprocess/                # Post-OCR processing
 │   ├── llm_extractor.py        # OpenRouter LLM extraction
@@ -162,14 +169,15 @@ ocr_manga_title/
 ├── schemas.py                  # Core Pydantic models
 ├── services/                   # Business logic layer
 │   ├── config.py               # Profile snapshot builder
-│   ├── image.py                # Base64/numpy image utilities
+│   ├── cache.py                # Content-addressable image cache
+│   ├── image.py                # Base64/numpy image encoding/decoding + multipart helpers
 │   ├── ocr.py                  # Model execution helpers
 │   ├── pipeline.py             # Result persistence
 │   └── preprocess.py           # Step execution helper
-├── settings.py                 # Environment variables + constants
+├── settings.py                 # Environment variables + constants + cache settings
 └── workers/                    # Background task processing
     ├── broker.py               # RedisBroker setup
-    └── ocr_worker.py           # Dramatiq actor (process_pipeline_run)
+    └── ocr_worker.py           # Dramatiq actor (process_pipeline_run, cooperative cancellation, OOM check)
 ```
 
 ---
@@ -206,3 +214,9 @@ Each exception is handled by a global handler registered in `api/app.py` that re
 6. **ORM/Pydantic name collision** — `OCRResult` and `ModelConfig` exist as both ORM models and Pydantic schemas. Import aliasing (`as OCRResultDB`, `as ModelConfigSchema`) is required throughout.
 
 7. **Naive UTC datetimes** — All timestamps use `datetime.now(UTC).replace(tzinfo=None)` for PostgreSQL compatibility.
+
+8. **Image cache** — Content-addressable cache keyed on `(image_hash, config_hash, cache_type)`. Preprocessing and OCR results cached for 7 days. Background sweeper evicts expired entries hourly.
+
+9. **Cooperative cancellation** — Worker checks DB for cancelled status at cooperative checkpoints. No thread interruption — graceful, DB-driven.
+
+10. **OOM pre-flight check** — Worker reads `/proc/meminfo` before OCREngine instantiation. Raises PermanentError if < 512MB available.

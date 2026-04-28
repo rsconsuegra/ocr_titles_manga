@@ -18,6 +18,8 @@ async def save_pipeline_results(
     session: AsyncSession,
     run_id: uuid.UUID,
     pipeline_result: PipelineResult,
+    *,
+    llm_config: dict | None = None,
 ) -> None:
     """Persist OCR results, post-processing results, and catalog entry."""
     for ocr_result in pipeline_result.ocr_results:
@@ -48,15 +50,20 @@ async def save_pipeline_results(
             ocr_db = r.scalars().first()
 
             if ocr_db:
-                pp_result = PostProcessingResult(
-                    ocr_result_id=ocr_db.id,
-                    title_en=pipeline_result.extracted.title_en,
-                    title_ja=pipeline_result.extracted.title_ja,
-                    code=pipeline_result.extracted.code,
-                    confidence=pipeline_result.extracted.confidence,
-                    processing_type=pipeline_result.extracted.source_method
+                pp_kwargs: dict = {
+                    "ocr_result_id": ocr_db.id,
+                    "title_en": pipeline_result.extracted.title_en,
+                    "title_ja": pipeline_result.extracted.title_ja,
+                    "code": pipeline_result.extracted.code,
+                    "confidence": pipeline_result.extracted.confidence,
+                    "processing_type": pipeline_result.extracted.source_method
                     or "unknown",
-                )
+                }
+                if llm_config:
+                    pp_kwargs["system_prompt_used"] = llm_config.get("system_prompt", "")
+                    pp_kwargs["user_prompt_used"] = llm_config.get("user_prompt_template", "{ocr_text}")
+                    pp_kwargs["temperature_used"] = float(llm_config.get("temperature", 0.1))
+                pp_result = PostProcessingResult(**pp_kwargs)
                 session.add(pp_result)
 
         if pipeline_result.extracted.confidence > 0.0:

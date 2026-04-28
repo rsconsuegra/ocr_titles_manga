@@ -10,13 +10,16 @@ from ocr_manga_title.api.routes import (
     batches,
     catalog,
     inputs,
+    llm as llm_route,
     models as models_route,
     ocr,
+    ollama as ollama_route,
     pipeline,
     preprocess,
     profiles,
     results,
     run as run_route,
+    settings as settings_route,
 )
 from ocr_manga_title.exceptions import (
     ConfigurationError,
@@ -125,5 +128,14 @@ def create_app() -> FastAPI:
     app.include_router(batches.router, prefix="/api/v1/batches", tags=["batches"])
     app.include_router(
         profiles.router, prefix="/api/v1/profiles", tags=["profiles"]
+    )
+    app.include_router(
+        ollama_route.router, prefix="/api/v1/ollama", tags=["ollama"]
+    )
+    app.include_router(
+        llm_route.router, prefix="/api/v1/llm", tags=["llm"]
+    )
+    app.include_router(
+        settings_route.router, prefix="/api/v1/settings", tags=["settings"]
     )
     return app

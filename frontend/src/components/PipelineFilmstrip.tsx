@@ -8,18 +8,18 @@ export default function PipelineFilmstrip({ steps }: PipelineFilmstripProps) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-2">
       {steps.map((step) => (
-        <div key={step.step_name} className="shrink-0" style={{ width: 200 }}>
+        <div key={step.step_name} className="w-[200px] shrink-0">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-xs font-medium text-bright">{step.step_name}</span>
             {step.enabled ? (
               step.success ? (
                 <div className="flex items-center gap-1">
-                  <span className="led led-active" style={{ width: 6, height: 6 }} />
+                  <span className="led led-active size-1.5" />
                   <span className="text-xs text-teal">OK</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1">
-                  <span className="led led-amber" style={{ width: 6, height: 6 }} />
+                  <span className="led led-amber size-1.5" />
                   <span className="text-xs text-amber">FAIL</span>
                 </div>
               )

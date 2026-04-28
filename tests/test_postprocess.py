@@ -33,7 +33,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         result = extractor.extract("Naruto text")
         assert result.title_en == "Naruto"
         assert result.title_ja == "ナルト"
@@ -54,7 +54,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         result = extractor.extract("random text")
         assert result.title_en is None
         assert result.confidence == 0.0
@@ -69,7 +69,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         with pytest.raises(LLMExtractionError):
             extractor.extract("text")
 
@@ -85,7 +85,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         result = extractor.extract("text")
         assert result.title_en == "One Piece"
 
@@ -99,7 +99,7 @@ class TestLLMExtractor:
         )
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         with pytest.raises(LLMExtractionError):
             extractor.extract("text")
 
@@ -113,7 +113,7 @@ class TestLLMExtractor:
         )
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         with pytest.raises(LLMExtractionError):
             extractor.extract("text")
 
@@ -127,7 +127,7 @@ class TestLLMExtractor:
         )
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         with pytest.raises(LLMExtractionError):
             extractor.extract("text")
 
@@ -143,7 +143,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config(default_model="my-model"))
+        extractor = LLMExtractor(openrouter_config=_make_config(default_model="my-model"), provider="openrouter")
         extractor.extract("text")
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert call_kwargs["model"] == "my-model"
@@ -160,7 +160,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         extractor.extract("text", model="custom-model")
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert call_kwargs["model"] == "custom-model"
@@ -172,7 +172,7 @@ class TestLLMExtractor:
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config(), prompt_path=str(prompt_file))
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter", prompt_path=str(prompt_file))
         assert extractor._system_prompt == "My custom prompt"
 
     @patch("openai.OpenAI")
@@ -180,7 +180,7 @@ class TestLLMExtractor:
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config(), prompt_path="/nonexistent/prompt.md")
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter", prompt_path="/nonexistent/prompt.md")
         assert "manga metadata" in extractor._system_prompt
 
     @patch("openai.OpenAI")
@@ -193,7 +193,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         extractor.extract("text")
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert call_kwargs["temperature"] == 0.1
@@ -212,7 +212,7 @@ class TestLLMExtractor:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        extractor = LLMExtractor(_make_config())
+        extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
         with caplog.at_level(logging.DEBUG):
             extractor.extract("text")
         assert "token usage" in caplog.text

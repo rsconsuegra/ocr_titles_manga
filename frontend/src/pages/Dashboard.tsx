@@ -84,8 +84,7 @@ export default function Dashboard() {
             <div>
               <p className="tech-label mb-2 text-teal">Oscilloscope Control Panel</p>
               <h1
-                className="font-display font-bold text-bright leading-tight"
-                style={{ fontSize: "clamp(1.75rem, 3vw, 2.75rem)" }}
+                className="font-display font-bold text-bright leading-tight text-[clamp(1.75rem,3vw,2.75rem)]"
               >
                 MANGA OCR
               </h1>

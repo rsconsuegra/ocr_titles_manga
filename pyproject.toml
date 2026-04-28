@@ -3,21 +3,18 @@ name = "ocr-manga-title"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.14.0",
     "asyncpg>=0.30.0",
+    "cryptography>=43.0.0",
     "dramatiq[redis]>=1.17.0",
     "fastapi>=0.115.0",
     "numpy>=1.26.0",
-    "opencv-python-headless>=4.8.0",
+    "opencv-python-headless>=4.9.0",
     "openai>=2.32.0",
     "pillow>=12.2.0",
     "pydantic>=2.0",
-    "paddleocr>=2.7.0",
-    "paddlepaddle>=3.0.0",
-    "easyocr>=1.7.0",
-    "pytesseract>=0.3.13",
     "python-multipart>=0.0.18",
     "pyyaml>=6.0.3",
     "sqlalchemy[asyncio]>=2.0",
@@ -27,12 +24,20 @@ dependencies = [
 
 [project.optional-dependencies]
 cpu = [
-    "torch>=2.9.1",
-    "torchvision>=0.24.1",
+    "easyocr>=1.7.2 ; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "paddlepaddle==3.3.0 ; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "paddleocr>=2.10,<3 ; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "pytesseract>=0.3.13",
+    "torch>=2.6.0 ; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "torchvision>=0.20.0 ; sys_platform != 'darwin' or platform_machine == 'arm64'",
 ]
-cuda = [
-    "torch>=2.9.1",
-    "torchvision>=0.24.1",
+cu126 = [
+    "easyocr>=1.7.2",
+    "paddleocr>=2.10,<3",
+    "paddlepaddle-gpu==3.3.0 ; sys_platform == 'linux'",
+    "pytesseract>=0.3.13",
+    "torch>=2.6.0",
+    "torchvision>=0.20.0",
 ]
 
 [dependency-groups]
@@ -56,23 +61,39 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name="paddle-cpu"
+url="https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+explicit = true
+
+[[tool.uv.index]]
+name = "paddle-cu126"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
 explicit = true
 
 [tool.uv]
 conflicts = [
-  [{ extra = "cpu" }, { extra = "cuda" }],
+  [{ extra = "cpu" }, { extra = "cu126" }],
 ]
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu128", extra = "cuda" },
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu126", extra = "cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
-  { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu128", extra = "cuda" },
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu126", extra = "cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+paddlepaddle = [
+  { index = "paddle-cpu", extra = "cpu" },
+]
+paddlepaddle-gpu = [
+  { index = "paddle-cu126", extra = "cu126", marker = "sys_platform == 'linux'" },
 ]
 
 [tool.pytest.ini_options]

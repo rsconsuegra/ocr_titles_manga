@@ -1,4 +1,4 @@
-import { type ChangeEvent, type DragEvent, useCallback, useState } from "react";
+import { type ChangeEvent, type DragEvent, useCallback, useEffect, useState } from "react";
 
 import { DsoErrorBanner } from "./dso";
 
@@ -12,8 +12,19 @@ interface Props {
 
 export default function ImageUploader({ onFilesSelected, maxFiles = MAX_FILES }: Props) {
   const [files, setFiles] = useState<File[]>([]);
+  const [blobUrls, setBlobUrls] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- sync blob URLs from files */
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setBlobUrls(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [files]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const validate = useCallback(
     (incoming: File[]): File[] => {
@@ -82,6 +93,14 @@ export default function ImageUploader({ onFilesSelected, maxFiles = MAX_FILES }:
             : "border-highlight/30 bg-inset neo-inset",
         ].join(" ")}
         onClick={() => document.getElementById("file-picker")?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            document.getElementById("file-picker")?.click();
+          }
+        }}
       >
         <svg className="mb-2 h-10 w-10 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -103,7 +122,7 @@ export default function ImageUploader({ onFilesSelected, maxFiles = MAX_FILES }:
           {files.map((f, i) => (
             <div key={i} className="group relative neo-inset p-2">
               <img
-                src={URL.createObjectURL(f)}
+                src={blobUrls[i]}
                 alt={f.name}
                 className="mb-1 h-24 w-full rounded object-cover"
               />

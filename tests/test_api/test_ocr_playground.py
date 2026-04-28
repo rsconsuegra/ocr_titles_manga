@@ -19,12 +19,13 @@ async def test_list_ocr_registry(client):
     response = await client.get("/api/v1/ocr/registry")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 4
+    assert len(data) == 5
     names = [m["name"] for m in data]
     assert "tesseract" in names
     assert "paddle" in names
     assert "easyocr" in names
     assert "glm_ocr" in names
+    assert "ollama_vision" in names
 
 
 async def test_list_ocr_registry_has_params(client):

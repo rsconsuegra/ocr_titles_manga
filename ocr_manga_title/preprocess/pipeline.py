@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from ocr_manga_title.preprocess.base import BasePreProcessor
+from ocr_manga_title.preprocess.base import BasePreProcessor, run_step_with_timeout
 from ocr_manga_title.schemas import PreProcessResult, PreProcessStepResult
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class PreProcessingPipeline:
     can be individually enabled or disabled via the configuration dict.
     """
 
-    STEP_ORDER = ["roi", "grayscale", "upscale", "denoise", "binarize"]
+    STEP_ORDER = ["roi", "upscale", "grayscale", "denoise", "binarize"]
 
     def __init__(self, config: dict):
         self._config = config.get("preprocessing", {})
@@ -120,9 +120,11 @@ class PreProcessingPipeline:
                 continue
 
             step_start = time.monotonic()
+            logger.info("Preprocessing: %s started", step.name)
             try:
-                result_image, metadata = step.process(current_image, step_config)
+                result_image, metadata = run_step_with_timeout(step, current_image, step_config)
                 step_time_ms = int((time.monotonic() - step_start) * 1000)
+                logger.info("Preprocessing: %s finished in %dms", step.name, step_time_ms)
 
                 output_path = None
                 if self._debug and result_image is not None:
@@ -142,7 +144,7 @@ class PreProcessingPipeline:
                 final_output_path = output_path
             except Exception as e:
                 step_time_ms = int((time.monotonic() - step_start) * 1000)
-                logger.error("Preprocessing step '%s' failed: %s", step.name, e)
+                logger.error("Preprocessing: %s failed in %dms: %s", step.name, step_time_ms, e)
                 step_results.append(
                     PreProcessStepResult(
                         step_name=step.name,
@@ -154,6 +156,7 @@ class PreProcessingPipeline:
                 )
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
+        logger.info("Preprocessing pipeline complete in %dms", total_time_ms)
 
         if any(s.success and s.enabled for s in step_results):
             final_output_path = self._save_image(current_image, "output", uid)

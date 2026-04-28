@@ -5,7 +5,7 @@ interface DsoPaginationProps extends HTMLAttributes<HTMLDivElement> {
   totalPages: number;
   totalItems: number;
   pageSize: number;
-  onPageChange: (page: number) => void;
+  onPageChange: (newPage: number) => void;
 }
 
 export function DsoPagination({

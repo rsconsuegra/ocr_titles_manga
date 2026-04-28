@@ -16,23 +16,23 @@ cp .env.example .env
 
 Edit `.env` and set your `OPENROUTER_API_KEY`. Other defaults work out of the box.
 
-### 2. Choose your PyTorch variant
+### 2. Choose your OCR dependency set
 
-The project supports two PyTorch backends, controlled by the `TORCH_VARIANT` env var:
+The project supports two OCR dependency sets, controlled by the `OCR_EXTRA` env var:
 
-| Variable | Backend | Image size | Use case |
-|----------|---------|-----------|----------|
-| `TORCH_VARIANT=cpu` | CPU-only (~2 GB) | Small | Local dev, macOS, machines without GPU |
-| `TORCH_VARIANT=cuda` | CUDA 12.8 (~4 GB) | Large | Linux servers with NVIDIA GPU |
+| Variable | Backend | Use case |
+|----------|---------|----------|
+| `OCR_EXTRA=cpu` | CPU PaddlePaddle + CPU/PyPI PyTorch | Local dev, macOS, machines without GPU |
+| `OCR_EXTRA=cu126` | PaddlePaddle GPU cu126 + PyTorch cu126 | Linux servers with NVIDIA GPU |
 
 Set it in `.env`:
 
 ```bash
 # For CPU (default)
-TORCH_VARIANT=cpu
+OCR_EXTRA=cpu
 
 # For GPU
-TORCH_VARIANT=cuda
+OCR_EXTRA=cu126
 ```
 
 ### 3. Build and run
@@ -46,7 +46,7 @@ colima start
 # Build and run
 make dev-cpu
 # or manually:
-TORCH_VARIANT=cpu docker compose up --build
+OCR_EXTRA=cpu docker compose up --build
 ```
 
 **GPU (Linux with NVIDIA):**
@@ -58,7 +58,7 @@ nvidia-ctk --version
 # Build and run
 make dev-gpu
 # or manually:
-TORCH_VARIANT=cuda docker compose up --build
+OCR_EXTRA=cu126 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ```
 
 ### 4. Access the app
@@ -101,7 +101,7 @@ TORCH_VARIANT=cuda docker compose up --build
 | `REDIS_URL` | `redis://redis:6379` | Redis connection string |
 | `OPENROUTER_API_KEY` | (required) | API key for LLM post-processing via OpenRouter |
 | `CORS_ORIGINS` | `["http://localhost:5173","http://localhost:3000"]` | Allowed CORS origins (JSON array) |
-| `TORCH_VARIANT` | `cpu` | PyTorch backend: `cpu` or `cuda` |
+| `OCR_EXTRA` | `cpu` | OCR dependency set: `cpu` or `cu126` |
 
 ### PostgreSQL overrides (docker-compose.yml)
 
@@ -132,10 +132,10 @@ TORCH_VARIANT=cuda docker compose up --build
 
 | Target | Description |
 |--------|-------------|
-| `make dev-cpu` | Build + run all services with CPU PyTorch |
-| `make dev-gpu` | Build + run all services with CUDA PyTorch |
-| `make docker-build` | Build images (set `TORCH_VARIANT`) |
-| `make docker-build-gpu` | Build images with CUDA |
+| `make dev-cpu` | Build + run all services with CPU OCR dependencies |
+| `make dev-gpu` | Build + run all services with CUDA 12.6 OCR dependencies |
+| `make docker-build` | Build images (set `OCR_EXTRA`) |
+| `make docker-build-gpu` | Build GPU images with CUDA 12.6 |
 | `make docker-up` | Start all services (detached) |
 | `make docker-down` | Stop all services |
 
@@ -152,27 +152,27 @@ TORCH_VARIANT=cuda docker compose up --build
 
 ## How CPU/CUDA Works
 
-The project uses uv's [optional dependencies](https://docs.astral.sh/uv/guides/integration/pytorch/) feature to support both CPU and CUDA PyTorch from a single lockfile.
+The project uses uv's optional dependencies to support CPU and CUDA OCR stacks from a single lockfile.
 
 **pyproject.toml** defines two conflicting extras:
 
 ```toml
 [project.optional-dependencies]
-cpu = ["torch>=2.9.1", "torchvision>=0.24.1"]
-cuda = ["torch>=2.9.1", "torchvision>=0.24.1"]
+cpu = ["easyocr", "paddleocr", "paddlepaddle", "pytesseract", "torch", "torchvision"]
+cu126 = ["easyocr", "paddleocr", "paddlepaddle-gpu", "pytesseract", "torch", "torchvision"]
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu128", extra = "cuda" },
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu126", extra = "cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 ```
 
 **Dockerfile** accepts a build arg:
 
 ```dockerfile
-ARG TORCH_VARIANT=cpu
-RUN uv sync --frozen --no-dev --extra ${TORCH_VARIANT}
+ARG OCR_EXTRA=cpu
+RUN uv sync --frozen --no-dev --extra ${OCR_EXTRA}
 ```
 
 **docker-compose.yml** passes the env var:
@@ -180,14 +180,14 @@ RUN uv sync --frozen --no-dev --extra ${TORCH_VARIANT}
 ```yaml
 build:
   args:
-    TORCH_VARIANT: ${TORCH_VARIANT:-cpu}
+    OCR_EXTRA: ${OCR_EXTRA:-cpu}
 ```
 
 This means:
 - A **single `uv.lock`** contains resolution data for both CPU and CUDA variants
-- `uv sync --extra cpu` installs CPU-only torch (~200 MB)
-- `uv sync --extra cuda` installs CUDA 12.8 torch (~2.5 GB with nvidia libs)
-- Docker builds select the variant via the `TORCH_VARIANT` build argument
+- `uv sync --extra cpu` installs the CPU OCR stack
+- `uv sync --extra cu126` installs the CUDA 12.6 OCR stack on Linux
+- Docker builds select the dependency set via the `OCR_EXTRA` build argument
 
 ## Local Development (without Docker)
 
@@ -195,7 +195,7 @@ For day-to-day coding, you can run the backend locally and only use Docker for P
 
 ```bash
 # Install deps
-uv sync
+uv sync --extra cpu --group dev
 
 # Start databases
 make db-up
@@ -207,7 +207,7 @@ make worker       # Terminal 2
 make frontend     # Terminal 3
 ```
 
-On macOS, `uv sync` installs CPU-only PyTorch from PyPI (no special configuration needed).
+On macOS, `uv sync --extra cpu --group dev` installs CPU PaddlePaddle and PyTorch from PyPI. CUDA is not available on macOS.
 
 ## Troubleshooting
 
@@ -224,7 +224,7 @@ colima start --cpu 4 --memory 8 --disk 60
 Verify NVIDIA Container Toolkit:
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi
 ```
 
 ### Port conflicts

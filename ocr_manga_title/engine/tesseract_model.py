@@ -31,7 +31,7 @@ class TesseractModel(BaseOCRModel):
 
         """
         self._config = config
-        languages = config.parameters.get("languages", config.language)
+        languages = config.parameters.get("languages", ["eng"])
         if isinstance(languages, list):
             self._lang_string = "+".join(languages)
         else:

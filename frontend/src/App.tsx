@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import { DsoBrandStrip, DsoScrew } from "./components/dso";
+import BatchRunDetail from "./pages/BatchRunDetail";
+import BatchRuns from "./pages/BatchRuns";
 import Catalog from "./pages/Catalog";
 import Dashboard from "./pages/Dashboard";
 import OcrPlayground from "./pages/OcrPlayground";
@@ -11,8 +13,7 @@ import Profiles from "./pages/Profiles";
 import QuickRun from "./pages/QuickRun";
 import RunDetail from "./pages/RunDetail";
 import Runs from "./pages/Runs";
-import BatchRuns from "./pages/BatchRuns";
-import BatchRunDetail from "./pages/BatchRunDetail";
+import Settings from "./pages/Settings";
 import Upload from "./pages/Upload";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -32,12 +33,16 @@ interface NavGroupProps {
 function NavGroup({ label, children, locationPath }: NavGroupProps) {
   const [open, setOpen] = useState(false);
   const prevPath = useRef(locationPath);
-  const closeTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (prevPath.current !== locationPath) {
-    prevPath.current = locationPath;
-    if (open) setOpen(false);
-  }
+  /* eslint-disable react-hooks/set-state-in-effect -- close nav on route change */
+  useEffect(() => {
+    if (prevPath.current !== locationPath) {
+      prevPath.current = locationPath;
+      if (open) setOpen(false);
+    }
+  }, [locationPath, open]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function scheduleClose() {
     closeTimer.current = setTimeout(() => setOpen(false), 200);
@@ -122,6 +127,7 @@ function AppShell() {
           </NavGroup>
           <NavGroup label="Config" locationPath={location.pathname}>
             <SubLink to="/profiles">Profiles</SubLink>
+            <SubLink to="/settings">Settings</SubLink>
           </NavGroup>
           <div className="ml-auto flex items-center gap-2">
             <DsoScrew />
@@ -144,6 +150,7 @@ function AppShell() {
           <Route path="/playground/ocr" element={<OcrPlayground />} />
           <Route path="/run/quick" element={<QuickRun />} />
           <Route path="/run/pipeline" element={<Upload />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/preprocess" element={<PreprocessPlayground />} />
         </Routes>

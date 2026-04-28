@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getCatalogExportUrl, listCatalog, updateCatalogEntry } from "../api/catalog";
 import type { CatalogEntryResponse } from "../api/types";
-import { DsoBadge, DsoButton, DsoInput, DsoPagination, DsoSelect } from "../components/dso";
 import ConfidenceMeter from "../components/ConfidenceMeter";
+import { DsoBadge, DsoButton, DsoInput, DsoPagination, DsoSelect } from "../components/dso";
 
 const STATUSES = ["", "auto_confirmed", "needs_review", "rejected"];
 const LIMIT = 20;
@@ -131,9 +131,8 @@ export default function Catalog() {
               </thead>
               <tbody>
                 {entries.map((entry) => (
-                  <>
+                  <Fragment key={entry.id}>
                     <tr
-                      key={entry.id}
                       onClick={() => handleExpand(entry)}
                       className="cursor-pointer border-b border-highlight/10 transition-colors hover:bg-teal/5"
                     >
@@ -151,7 +150,7 @@ export default function Catalog() {
                       </td>
                     </tr>
                     {expandedId === entry.id && (
-                      <tr key={`${entry.id}-edit`}>
+                      <tr>
                         <td colSpan={6} className="neo-deep-inset px-4 py-3">
                           <div className="flex flex-wrap gap-3">
                             <DsoInput
@@ -183,17 +182,18 @@ export default function Catalog() {
                           </div>
                           <p className="mt-2 text-xs text-muted">
                             Source:{" "}
-                            <span
+                            <button
+                              type="button"
                               onClick={() => navigate(`/runs/${entry.source_run_id}`)}
                               className="cursor-pointer text-teal hover:text-bright transition-colors"
                             >
                               Run #{entry.source_run_id.slice(0, 8)}
-                            </span>
+                            </button>
                           </p>
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

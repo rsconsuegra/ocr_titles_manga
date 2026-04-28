@@ -27,7 +27,7 @@ async def test_list_models(client, db_engine):
     response = await client.get("/api/v1/models")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 4
+    assert len(data) == 5
     tess = next(m for m in data if m["model_name"] == "tesseract")
     assert tess["is_enabled"] is True
     assert tess["parameters"]["psm"] == "6"

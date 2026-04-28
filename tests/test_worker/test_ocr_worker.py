@@ -285,7 +285,7 @@ async def test_model_config_loaded_from_db(db_engine, tmp_path):
 
     captured_configs = {}
 
-    def capture_engine_init(config, ocr_config, preprocess_config=None):
+    def capture_engine_init(config, ocr_config, preprocess_config=None, llm_config=None):
         captured_configs.update(ocr_config)
         mock = MagicMock()
         mock.process.return_value = _fake_pipeline_result()

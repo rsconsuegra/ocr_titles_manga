@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { listBatches } from "../api/batch";
 import type { BatchRunResponse } from "../api/types";
-import { DsoBadge, DsoButton, DsoProgressBar, DsoTable } from "../components/dso";
+import { DsoBadge, DsoButton, DsoPagination, DsoProgressBar, DsoTable } from "../components/dso";
+
+const LIMIT = 20;
 
 const statusVariant: Record<string, "completed" | "processing" | "failed" | "pending" | "default"> = {
   completed: "completed",
@@ -19,17 +21,12 @@ export default function BatchRuns() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const limit = 20;
 
-  useEffect(() => {
-    load();
-  }, [offset]);
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await listBatches({ limit, offset });
+      const res = await listBatches({ limit: LIMIT, offset });
       setBatches(res.items);
       setTotal(res.total);
     } catch (e) {
@@ -37,10 +34,13 @@ export default function BatchRuns() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [offset]);
 
-  const hasPrev = offset > 0;
-  const hasNext = offset + limit < total;
+  /* eslint-disable react-hooks/set-state-in-effect -- data-fetching effect */
+  useEffect(() => {
+    load();
+  }, [load]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div>
@@ -115,25 +115,14 @@ export default function BatchRuns() {
             keyFn={(b) => b.id}
           />
 
-          <div className="mt-4 flex items-center justify-between">
-            <DsoButton
-              variant="secondary"
-              onClick={() => setOffset(Math.max(0, offset - limit))}
-              disabled={!hasPrev}
-            >
-              Previous
-            </DsoButton>
-            <span className="tech-label">
-              {offset + 1}&ndash;{Math.min(offset + limit, total)} of {total}
-            </span>
-            <DsoButton
-              variant="secondary"
-              onClick={() => setOffset(offset + limit)}
-              disabled={!hasNext}
-            >
-              Next
-            </DsoButton>
-          </div>
+          <DsoPagination
+            page={Math.floor(offset / LIMIT) + 1}
+            totalPages={Math.ceil(total / LIMIT)}
+            totalItems={total}
+            pageSize={LIMIT}
+            onPageChange={(p) => setOffset((p - 1) * LIMIT)}
+            className="mt-4"
+          />
         </>
       )}
     </div>

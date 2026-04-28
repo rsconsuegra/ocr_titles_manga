@@ -1,5 +1,17 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        OCR_EXTRA: ${OCR_EXTRA:-cu126}
+
   api:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        OCR_EXTRA: ${OCR_EXTRA:-cu126}
     deploy:
       resources:
         reservations:
@@ -9,6 +21,11 @@ services:
               capabilities: [gpu]
 
   worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        OCR_EXTRA: ${OCR_EXTRA:-cu126}
     deploy:
       resources:
         reservations:

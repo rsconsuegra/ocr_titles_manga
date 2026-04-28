@@ -10,7 +10,14 @@ import {
 } from "../api/profiles";
 import type { ModelDescriptorResponse, StepDescriptor } from "../api/types";
 import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
+import LlmConfigSection from "../components/LlmConfigSection";
+import OcrModelCard from "../components/OcrModelCard";
+import OllamaModelSelector from "../components/OllamaModelSelector";
 import PreprocessStepCard from "../components/PreprocessStepCard";
+import PromptSettingsPanel from "../components/PromptSettingsPanel";
+import { useLlmPromptState } from "../hooks/useLlmPromptState";
+import { useOllamaModels } from "../hooks/useOllamaModels";
+import { parseStepEntries } from "../utils/configParsing";
 
 export default function ProfileEditor() {
   const { id } = useParams<{ id: string }>();
@@ -21,6 +28,10 @@ export default function ProfileEditor() {
   const [description, setDescription] = useState("");
   const [isDefault, setIsDefault] = useState(false);
   const [enableLlm, setEnableLlm] = useState(false);
+  const [llmProvider, setLlmProvider] = useState("openrouter");
+  const [ollamaDefaultModel, setOllamaDefaultModel] = useState("");
+  const promptState = useLlmPromptState({ userPromptTemplate: "{ocr_text}" });
+  const { llmModels: ollamaModels, status: ollamaStatus } = useOllamaModels();
 
   const [preprocessSteps, setPreprocessSteps] = useState<StepDescriptor[]>([]);
   const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>({});
@@ -43,6 +54,7 @@ export default function ProfileEditor() {
       .catch(() => {});
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- data-fetching; promptState is stable */
   useEffect(() => {
     if (!isEdit || !id) {
       setPageLoading(false);
@@ -54,28 +66,23 @@ export default function ProfileEditor() {
         setDescription(p.description || "");
         setIsDefault(p.is_default);
         setEnableLlm(p.enable_llm);
+        setLlmProvider(p.llm_provider || "openrouter");
+        promptState.loadFromProfile(p);
         if (p.preprocess_steps) {
-          for (const [stepName, cfg] of Object.entries(p.preprocess_steps)) {
-            const enabled = (cfg as Record<string, unknown>).enabled === true;
-            setPreprocessEnabled((prev) => ({ ...prev, [stepName]: enabled }));
-            const params = { ...cfg } as Record<string, unknown>;
-            delete params.enabled;
-            setPreprocessConfig((prev) => ({ ...prev, [stepName]: params as Record<string, unknown> }));
-          }
+          const { config, enabled } = parseStepEntries(p.preprocess_steps);
+          setPreprocessConfig(config);
+          setPreprocessEnabled(enabled);
         }
         if (p.ocr_models) {
-          for (const [modelName, cfg] of Object.entries(p.ocr_models)) {
-            const enabled = (cfg as Record<string, unknown>).enabled === true;
-            setOcrEnabled((prev) => ({ ...prev, [modelName]: enabled }));
-            const params = { ...cfg } as Record<string, unknown>;
-            delete params.enabled;
-            setOcrConfig((prev) => ({ ...prev, [modelName]: params as Record<string, unknown> }));
-          }
+          const { config, enabled } = parseStepEntries(p.ocr_models);
+          setOcrConfig(config);
+          setOcrEnabled(enabled);
         }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load profile"))
       .finally(() => setPageLoading(false));
   }, [id, isEdit]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   function buildPreprocessPayload(): Record<string, Record<string, unknown>> {
     const ppSteps: Record<string, Record<string, unknown>> = {};
@@ -109,6 +116,8 @@ export default function ProfileEditor() {
       preprocess_steps: buildPreprocessPayload(),
       ocr_models: buildOcrPayload(),
       enable_llm: enableLlm,
+      llm_provider: llmProvider,
+      llm_config: promptState.toConfig(),
       is_default: isDefault,
     };
 
@@ -176,55 +185,66 @@ export default function ProfileEditor() {
           <h2 className="mb-3 tech-label-bright">OCR Models</h2>
           <div className="space-y-3">
             {ocrModels.map((m) => (
-              <div key={m.name} className="neo-inset rounded-lg p-3">
-                <label className="flex items-center gap-2 text-sm font-medium text-bright">
-                  <input
-                    type="checkbox"
-                    checked={ocrEnabled[m.name] ?? false}
-                    onChange={(e) =>
-                      setOcrEnabled((prev) => ({ ...prev, [m.name]: e.target.checked }))
-                    }
-                    className="rounded border-highlight/40 bg-inset accent-teal"
-                  />
-                  {m.label}
-                  {!m.available && (
-                    <span className="text-xs text-muted">(not available)</span>
-                  )}
-                </label>
-                {ocrEnabled[m.name] && m.params.length > 0 && (
-                  <div className="mt-2">
-                    <PreprocessStepCard
-                      step={{
-                        name: m.name,
-                        label: m.label,
-                        description: m.description,
-                        params: m.params,
-                      }}
-                      params={ocrConfig[m.name] || {}}
-                      enabled={true}
-                      onParamsChange={(c) =>
-                        setOcrConfig((prev) => ({ ...prev, [m.name]: c }))
-                      }
-                      onEnabledChange={() => {}}
-                      showEnabled={false}
-                    />
-                  </div>
-                )}
-              </div>
+              <OcrModelCard
+                key={m.name}
+                model={m}
+                enabled={ocrEnabled[m.name] ?? false}
+                config={ocrConfig[m.name] || {}}
+                onEnabledChange={(checked) => {
+                  setOcrEnabled((prev) => ({ ...prev, [m.name]: checked }));
+                  if (m.name === "ollama_vision" && checked) setEnableLlm(false);
+                }}
+                onConfigChange={(c) => setOcrConfig((prev) => ({ ...prev, [m.name]: c }))}
+              />
             ))}
           </div>
         </DsoCard>
 
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-bright">
-            <input
-              type="checkbox"
-              checked={enableLlm}
-              onChange={(e) => setEnableLlm(e.target.checked)}
-              className="rounded border-highlight/40 bg-inset accent-teal"
+        <div className="space-y-3">
+          <LlmConfigSection
+            enableLlm={enableLlm}
+            onEnableLlmChange={setEnableLlm}
+            llmDisabled={!!ocrEnabled["ollama_vision"]}
+            llmProvider={llmProvider}
+            onLlmProviderChange={setLlmProvider}
+            llmModel={ollamaDefaultModel}
+            onLlmModelChange={setOllamaDefaultModel}
+            ollamaModels={ollamaModels}
+            ollamaStatus={ollamaStatus}
+            radioName="llm_provider_profile"
+          />
+
+          {enableLlm && llmProvider === "ollama" && ollamaStatus?.configured && ollamaModels.length > 0 && (
+            <OllamaModelSelector
+              label="Default Ollama Model"
+              models={ollamaModels}
+              value={ollamaDefaultModel}
+              onChange={setOllamaDefaultModel}
+              showDetails
+              emptyMessage="No models found. Make sure Ollama is running."
             />
-            Enable LLM post-processing
-          </label>
+          )}
+
+          {enableLlm && (
+            <DsoCard>
+              <p className="tech-label-bright mb-2">Prompt Settings</p>
+              <PromptSettingsPanel
+                systemPrompt={promptState.llmSystemPrompt}
+                onSystemPromptChange={promptState.setLlmSystemPrompt}
+                userPrompt={promptState.llmUserPrompt}
+                onUserPromptChange={promptState.setLlmUserPrompt}
+                temperature={promptState.llmTemperature}
+                onTemperatureChange={promptState.setLlmTemperature}
+                maxOcrChars={promptState.llmMaxOcrChars}
+                onMaxOcrCharsChange={promptState.setLlmMaxOcrChars}
+                showToggle={false}
+                isOpen={true}
+                onToggle={() => {}}
+                size="md"
+              />
+            </DsoCard>
+          )}
+
           <label className="flex items-center gap-2 text-sm text-bright">
             <input
               type="checkbox"

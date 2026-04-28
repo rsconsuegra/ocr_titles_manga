@@ -1,9 +1,12 @@
 """OCR model execution service — shared by playground, quick run, and worker."""
 
+import logging
 import time
 
 from ocr_manga_title.api.schemas.ocr import LLMResultData, OCRResultData
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
+
+logger = logging.getLogger(__name__)
 
 
 def build_model_config(model_name: str, overrides: dict) -> tuple | None:
@@ -59,9 +62,12 @@ def run_single_model(
     if not instance.is_available:
         return OCRResultData(model_name=model_name, error="Model not available")
 
+    logger.info("OCR model '%s' started", model_name)
     start = time.monotonic()
     try:
         ocr_result = instance.run(image_path)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.info("OCR model '%s' finished in %dms", model_name, elapsed_ms)
         return OCRResultData(
             raw_text=ocr_result.raw_text,
             model_name=ocr_result.model_name,
@@ -71,6 +77,7 @@ def run_single_model(
         )
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.info("OCR model '%s' failed in %dms: %s", model_name, elapsed_ms, e)
         return OCRResultData(
             model_name=model_name,
             processing_time_ms=elapsed_ms,
@@ -106,18 +113,52 @@ def run_all_enabled_models(
     return results
 
 
-def run_llm_extraction(raw_text: str) -> LLMResultData:
+def run_llm_extraction(
+    raw_text: str,
+    *,
+    provider: str | None = None,
+    llm_model: str | None = None,
+    llm_config: dict | None = None,
+) -> LLMResultData:
     """Run LLM extraction on raw OCR text.
 
+    Selects the LLM provider based on the *provider* argument (falls back to
+    ``llm_provider`` in configs.toml when *None*).
     Returns :class:`LLMResultData` (or failure placeholder).
     """
     try:
         from ocr_manga_title.config import load_config
         from ocr_manga_title.postprocess.llm_extractor import LLMExtractor
+        from ocr_manga_title.schemas import LLMPromptConfig
 
         config = load_config("config/configs.toml")
-        extractor = LLMExtractor(config.openrouter)
-        extracted = extractor.extract(raw_text)
+        effective_provider = provider or config.llm_provider
+
+        prompt_config = None
+        if llm_config:
+            system_prompt = llm_config.get("system_prompt", "")
+            if not system_prompt:
+                from prompts import DEFAULT_SYSTEM_PROMPT
+
+                system_prompt = DEFAULT_SYSTEM_PROMPT
+            prompt_config = LLMPromptConfig(
+                system_prompt=system_prompt,
+                user_prompt_template=llm_config.get("user_prompt_template", "{ocr_text}"),
+                temperature=float(llm_config.get("temperature", 0.1)),
+                max_ocr_chars=int(llm_config.get("max_ocr_chars", 0)),
+            )
+
+        extractor = LLMExtractor(
+            openrouter_config=config.openrouter if effective_provider == "openrouter" else None,
+            ollama_config=config.ollama if effective_provider == "ollama" else None,
+            provider=effective_provider,
+            prompt_config=prompt_config,
+        )
+        llm_start = time.monotonic()
+        logger.info("LLM extraction started (provider=%s, model=%s)", effective_provider, llm_model)
+        extracted = extractor.extract(raw_text, model=llm_model)
+        llm_ms = int((time.monotonic() - llm_start) * 1000)
+        logger.info("LLM extraction finished in %dms", llm_ms)
         return LLMResultData(
             title_en=extracted.title_en,
             title_ja=extracted.title_ja,

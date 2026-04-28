@@ -2,15 +2,15 @@ import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } fr
 
 interface Column<T> {
   header: string;
-  render: (row: T, index: number) => ReactNode;
+  render: (item: T, idx: number) => ReactNode;
   className?: string;
 }
 
 interface DsoTableProps<T> extends Omit<HTMLAttributes<HTMLTableElement>, "children"> {
   columns: Column<T>[];
   data: T[];
-  onRowClick?: (row: T, index: number) => void;
-  keyFn: (row: T, index: number) => string;
+  onRowClick?: (item: T, idx: number) => void;
+  keyFn: (item: T, idx: number) => string;
   emptyMessage?: string;
 }
 
@@ -46,20 +46,20 @@ export function DsoTable<T>({
               </td>
             </tr>
           ) : (
-            data.map((row, index) => (
+            data.map((item, idx) => (
               <tr
-                key={keyFn(row, index)}
+                key={keyFn(item, idx)}
                 className={[
                   "border-b border-highlight/10 transition-colors duration-100",
                   onRowClick
                     ? "cursor-pointer hover:bg-teal/5"
                     : "",
                 ].join(" ")}
-                onClick={() => onRowClick?.(row, index)}
+                onClick={() => onRowClick?.(item, idx)}
               >
                 {columns.map((col, i) => (
                   <DsoTd key={i} className={col.className}>
-                    {col.render(row, index)}
+                    {col.render(item, idx)}
                   </DsoTd>
                 ))}
               </tr>

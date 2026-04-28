@@ -22,6 +22,13 @@ OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 OPENROUTER_REQUEST_TIMEOUT: float = 30.0
 OPENROUTER_MAX_RETRIES: int = 3
 OPENROUTER_API_KEY_PREFIX: str = "sk-"
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+
+# --- Ollama ---
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "")
+OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "ollama")
+OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+OLLAMA_DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3")
 
 # --- Config file paths ---
 CONFIG_PATH: str = "config/configs.toml"
@@ -56,3 +63,6 @@ CACHE_SWEEPER_INTERVAL_SECONDS: int = int(
 CORS_ORIGINS: list[str] = os.getenv(
     "CORS_ORIGINS", "http://localhost:5173"
 ).split(",")
+
+# --- Encryption ---
+SERVER_SECRET: str = os.getenv("SERVER_SECRET", "")

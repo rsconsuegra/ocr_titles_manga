@@ -64,6 +64,7 @@ export interface ParamDescriptor {
   label: string;
   description: string;
   options?: string[];
+  disabled_options?: Record<string, string>;
   min?: number;
   max?: number;
   step?: number;
@@ -151,6 +152,13 @@ export interface BatchRunDetailResponse extends BatchRunResponse {
   runs: PipelineRunResponse[];
 }
 
+export interface LLMPromptConfig {
+  system_prompt?: string;
+  user_prompt_template?: string;
+  temperature?: number;
+  max_ocr_chars?: number;
+}
+
 export interface ProfileResponse {
   id: string;
   name: string;
@@ -158,6 +166,8 @@ export interface ProfileResponse {
   preprocess_steps: Record<string, Record<string, unknown>> | null;
   ocr_models: Record<string, Record<string, unknown>> | null;
   enable_llm: boolean;
+  llm_provider: string;
+  llm_config: LLMPromptConfig | null;
   is_default: boolean;
   created_at: string;
   updated_at: string | null;
@@ -169,6 +179,8 @@ export interface ProfileCreateRequest {
   preprocess_steps?: Record<string, Record<string, unknown>>;
   ocr_models?: Record<string, Record<string, unknown>>;
   enable_llm?: boolean;
+  llm_provider?: string;
+  llm_config?: LLMPromptConfig | null;
   is_default?: boolean;
 }
 
@@ -178,5 +190,66 @@ export interface ProfileUpdateRequest {
   preprocess_steps?: Record<string, Record<string, unknown>> | null;
   ocr_models?: Record<string, Record<string, unknown>> | null;
   enable_llm?: boolean;
+  llm_provider?: string;
+  llm_config?: LLMPromptConfig | null;
   is_default?: boolean;
+}
+
+export interface LLMProvider {
+  name: string;
+  label: string;
+  available: boolean;
+  configured?: boolean;
+  model_count?: number;
+}
+
+export interface LLMProvidersResponse {
+  providers: LLMProvider[];
+}
+
+export interface OllamaModelInfo {
+  name: string;
+  size: number;
+  modified_at: string;
+  parameter_size: string;
+  quantization: string;
+}
+
+export interface OllamaStatusResponse {
+  configured: boolean;
+  base_url: string;
+  default_model: string;
+  default_vision_model: string;
+}
+
+export interface OllamaSettingsResponse {
+  base_url: string;
+  configured: boolean;
+  default_model: string;
+  default_vision_model: string;
+  available_llm_models: OllamaModelInfo[];
+  available_vision_models: OllamaModelInfo[];
+}
+
+export interface OllamaUrlUpdateResponse {
+  base_url: string;
+  default_model: string;
+  default_vision_model: string;
+  available_llm_models: OllamaModelInfo[];
+  available_vision_models: OllamaModelInfo[];
+  validated: boolean;
+  message: string;
+}
+
+export interface CredentialInfo {
+  service: string;
+  has_key: boolean;
+  masked_key: string | null;
+  source: string | null;
+  is_active: boolean;
+}
+
+export interface CredentialValidateResponse {
+  valid: boolean;
+  message: string;
 }

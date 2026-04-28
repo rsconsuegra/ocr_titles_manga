@@ -7,14 +7,15 @@ from pydantic import BaseModel, Field, SecretStr, field_validator, model_validat
 
 from ocr_manga_title.exceptions import ConfigurationError
 from ocr_manga_title.settings import (
+    OLLAMA_BASE_URL,
+    OLLAMA_DEFAULT_MODEL,
+    OLLAMA_TIMEOUT,
     OPENROUTER_API_KEY_PREFIX,
     OPENROUTER_BASE_URL,
     OPENROUTER_DEFAULT_MODEL,
     OPENROUTER_MAX_RETRIES,
     OPENROUTER_REQUEST_TIMEOUT,
 )
-
-_MODEL_ALIASES: dict[str, str] = {"languages": "language"}
 
 
 class OpenRouterConfig(BaseModel):
@@ -26,23 +27,45 @@ class OpenRouterConfig(BaseModel):
     request_timeout: float = OPENROUTER_REQUEST_TIMEOUT
     max_retries: int = OPENROUTER_MAX_RETRIES
 
-    @field_validator("api_key", mode="before")
-    @classmethod
-    def validate_api_key(cls, v: str | SecretStr) -> str | SecretStr:
-        """Ensure the API key starts with the expected prefix."""
-        raw = v.get_secret_value() if isinstance(v, SecretStr) else v
-        if not raw.startswith(OPENROUTER_API_KEY_PREFIX):
+    @model_validator(mode="after")
+    def validate_api_key_prefix(self) -> "OpenRouterConfig":
+        if "openrouter.ai" in self.base_url and not self.api_key.get_secret_value().startswith(OPENROUTER_API_KEY_PREFIX):
             raise ConfigurationError(
                 f"API key must start with '{OPENROUTER_API_KEY_PREFIX}'",
                 field_name="api_key",
             )
-        return v
+        return self
+
+
+class OllamaConfig(BaseModel):
+    """Connection settings for a remote Ollama instance."""
+
+    base_url: str = OLLAMA_BASE_URL
+    default_model: str = OLLAMA_DEFAULT_MODEL
+    default_vision_model: str = "llava"
+    timeout: float = OLLAMA_TIMEOUT
+
+
+class LLMPromptConfig(BaseModel):
+    """Configurable prompt template for LLM post-processing."""
+
+    system_prompt: str = ""
+    user_prompt_template: str = "{ocr_text}"
+    temperature: float = 0.1
+
+    max_ocr_chars: int = 0
+
+    def render_user_prompt(self, ocr_text: str) -> str:
+        trimmed = ocr_text[:self.max_ocr_chars] if self.max_ocr_chars > 0 else ocr_text
+        return self.user_prompt_template.format_map({"ocr_text": trimmed})
 
 
 class AppConfig(BaseModel):
     """Top-level application configuration loaded from TOML."""
 
     openrouter: OpenRouterConfig
+    ollama: OllamaConfig = OllamaConfig()
+    llm_provider: str = "openrouter"
 
 
 class ModelConfig(BaseModel):
@@ -51,14 +74,12 @@ class ModelConfig(BaseModel):
     The ``name`` field is auto-populated from the YAML dict key (via ``__key__``)
     when the model entry is loaded by :func:`~ocr_manga_title.config.load_ocr_config`.
 
-    Known aliases (``languages`` → ``language``) are handled by the validator.
     Any remaining non-schema keys are routed into ``parameters``.  Typos of
     recognised field names raise a ``ValidationError``.
     """
 
     name: str = ""
     enabled: bool = True
-    language: str | list[str] = "en"
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
@@ -70,33 +91,15 @@ class ModelConfig(BaseModel):
                 data.pop("__key__")
         return data
 
-    @classmethod
-    def _resolve_field_aliases(cls, data: dict) -> dict:
-        for alias, target in _MODEL_ALIASES.items():
-            if alias in data and target not in data:
-                data[target] = data.pop(alias)
-            elif alias in data:
-                data.pop(alias)
-        return data
-
-    @classmethod
-    def _route_extras(cls, data: dict, schema_fields: set[str]) -> dict:
-        extras = {k: v for k, v in data.items() if k not in schema_fields}
-        if extras:
-            data["parameters"] = {**data.get("parameters", {}), **extras}
-            for k in extras:
-                data.pop(k)
-        return data
-
     @model_validator(mode="before")
     @classmethod
     def route_extras_to_parameters(cls, data: Any) -> Any:
-        """Route unrecognised fields into ``parameters`` and resolve aliases."""
+        """Route unrecognised fields into ``parameters``."""
         if not isinstance(data, dict):
             return data
 
         schema_fields = set(cls.model_fields.keys())
-        recognised = schema_fields | set(_MODEL_ALIASES.keys()) | {"__key__"}
+        recognised = schema_fields | {"__key__"}
 
         for key in data:
             if key not in recognised and _looks_like_typo(key, recognised):
@@ -105,8 +108,12 @@ class ModelConfig(BaseModel):
                 )
 
         data = cls._resolve_key_alias(data)
-        data = cls._resolve_field_aliases(data)
-        return cls._route_extras(data, schema_fields)
+        extras = {k: v for k, v in data.items() if k not in schema_fields}
+        if extras:
+            data["parameters"] = {**data.get("parameters", {}), **extras}
+            for k in extras:
+                data.pop(k)
+        return data
 
 
 class PreProcessStepConfig(BaseModel):

@@ -9,44 +9,49 @@
 | Service | Image | Port | Purpose |
 |---|---|---|---|
 | `postgres` | `postgres:18-alpine` | 5432 | Primary database |
-| `redis` | `redis:7-alpine` | 6379 | Dramatiq message broker |
+| `redis` | `redis:8-alpine` | 6379 | Dramatiq message broker |
 | `migrate` | Built from Dockerfile | — | Runs `alembic upgrade head` on startup |
 | `api` | Built from Dockerfile | 8000 | FastAPI application |
 | `worker` | Built from Dockerfile | — | Dramatiq worker |
-| `frontend` | Built from `frontend/Dockerfile.dev` | 5173 | Vite dev server |
+| `frontend` | Built from `frontend/Dockerfile` | 5173:80 | Nginx (production) |
 
 **Startup order**: postgres → migrate (completes) → api + worker (depend on migrate + redis) → frontend (depends on api)
 
-**Shared volumes**: `./uploads:/app/uploads` (api + worker share uploaded images)
+**Shared volumes**:
+- `./uploads:/app/uploads` (api + worker share uploaded images)
+- `ocr_cache:/app/cache` (api + worker share image cache)
+- `pgdata:/var/lib/postgresql` (postgres data)
 
-### Development Stack (`docker-compose.dev.yml`)
-
-Only PostgreSQL and Redis (API and worker run locally via `make api` / `make worker`).
+For local dev, run `make db-up` for PostgreSQL + Redis only.
 
 ---
 
 ## Dockerfile
 
 ```dockerfile
+ARG OCR_EXTRA=cpu
+
 FROM python:3.12-slim
 
-# Install Tesseract + 9 language packs
+# Install Tesseract + 9 language packs + ccache
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr tesseract-ocr-eng tesseract-ocr-jpn tesseract-ocr-chi-sim \
     tesseract-ocr-kor tesseract-ocr-spa tesseract-ocr-fra tesseract-ocr-deu \
-    tesseract-ocr-por tesseract-ocr-ita && rm -rf /var/lib/apt/lists/*
+    tesseract-ocr-por tesseract-ocr-ita ccache && rm -rf /var/lib/apt/lists/*
 
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --extra ${OCR_EXTRA}
 COPY . .
 
 EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "ocr_manga_title.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+The `OCR_EXTRA` build arg controls which OCR dependency set is installed (`cpu` or `cu126`).
 
 ---
 
@@ -134,6 +139,7 @@ All env vars have sensible defaults for local development. Override as needed:
 | `DB_POOL_TIMEOUT` | `30` | API |
 | `DB_WORKER_POOL_SIZE` | `2` | Worker |
 | `DB_WORKER_MAX_OVERFLOW` | `0` | Worker |
+| `OCR_EXTRA` | `cpu` | Docker build arg for OCR dependency set |
 
 ---
 
@@ -230,6 +236,10 @@ preprocessing:
 | `openai` | OpenAI-compatible API client |
 | `pyyaml` | YAML config parsing |
 | `python-multipart` | File upload handling |
+| `paddlepaddle` | PaddleOCR inference engine |
+| `paddleocr` | PaddleOCR Python binding |
+| `easyocr` | EasyOCR Python binding |
+| `torch` | PyTorch (EasyOCR dependency) |
 
 ### Development
 
@@ -242,6 +252,12 @@ preprocessing:
 | `mypy` | Type checker |
 | `bandit` | Security scanner |
 | `pytest-cov` | Coverage reporting |
+
+---
+
+## Frontend Dockerfile
+
+Multi-stage build using `node:24-slim` for the build stage. Production image uses nginx to serve static assets with `client_max_body_size 50m` configured for large image uploads. Port 80 inside the container is mapped to 5173 on the host.
 
 ---
 

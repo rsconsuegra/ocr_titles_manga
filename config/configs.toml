@@ -1,4 +1,11 @@
+llm_provider = "openrouter"
+
 [openrouter]
-api_key = "sk-or-replace-me"
 default_model = "google/gemini-2.5-flash"
 base_url = "https://openrouter.ai/api/v1"
+
+[ollama]
+base_url = "https://bench-solid-sandra-satisfaction.trycloudflare.com"
+default_model = "qwen3.5"
+default_vision_model = "llava"
+timeout = 120.0

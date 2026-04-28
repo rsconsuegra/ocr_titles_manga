@@ -32,14 +32,15 @@ frontend/src/
 │   ├── ImageUploader.tsx     # Drag-and-drop file upload
 │   ├── PipelineFilmstrip.tsx # Horizontal step result display
 │   ├── PreprocessStepCard.tsx# Config card for steps/models
-│   └── RunStatusBadge.tsx    # Status badge with colors
+│   ├── RunStatusBadge.tsx    # Status badge with colors
+│   └── DsoBadge.tsx          # LED-style status badge
 ├── hooks/                    # Custom React hooks
 │   ├── useFileReader.ts      # Reads File → base64 data URL
 │   └── useYamlConfig.ts      # Parses YAML → config + enabled dicts
 ├── pages/                    # Route-level page components
 │   ├── Dashboard.tsx         # Home / overview
 │   ├── Runs.tsx              # Paginated pipeline run list
-│   ├── RunDetail.tsx         # Single run detail with OCR results
+│   ├── RunDetail.tsx         # Single run detail + Cancel + Retry buttons
 │   ├── BatchRuns.tsx         # Batch list with progress bars
 │   ├── BatchRunDetail.tsx    # Batch detail + process all + auto-poll
 │   ├── Catalog.tsx           # Catalog entries with search
@@ -107,6 +108,7 @@ All API calls go through domain-specific modules in `api/`. The base URL is `htt
 | `triggerPipeline(runId)` | POST | `/pipeline/run/{runId}` |
 | `listRuns(status?, limit?, offset?)` | GET | `/pipeline/runs` |
 | `getRunDetail(runId)` | GET | `/pipeline/runs/{runId}` |
+| `cancelRun(runId)` | POST | `/pipeline/runs/{runId}/cancel` |
 
 ### `api/batch.ts`
 
@@ -142,7 +144,7 @@ All API calls go through domain-specific modules in `api/`. The base URL is `htt
 | Function | Method | Endpoint |
 |---|---|---|
 | `getOCRModels()` | GET | `/ocr/registry` |
-| `runOCR(image, modelName, params?, enableLlm?)` | POST | `/ocr/run` |
+| `runOCR(file, modelName, params?, enableLlm?)` | POST | `/ocr/run` |
 | `exportOCRConfig(models)` | POST | `/ocr/export` |
 
 ### `api/preprocess.ts`
@@ -150,15 +152,15 @@ All API calls go through domain-specific modules in `api/`. The base URL is `htt
 | Function | Method | Endpoint |
 |---|---|---|
 | `getPreprocessSteps()` | GET | `/preprocess/steps` |
-| `previewStep(image, stepName, params)` | POST | `/preprocess/preview/step` |
-| `previewPipeline(image, steps)` | POST | `/preprocess/preview/pipeline` |
+| `previewStep(file, stepName, params)` | POST | `/preprocess/preview/step` |
+| `previewPipeline(file, steps)` | POST | `/preprocess/preview/pipeline` |
 | `exportPipeline(steps)` | POST | `/preprocess/export` |
 
 ### `api/run.ts`
 
 | Function | Method | Endpoint |
 |---|---|---|
-| `quickRun(image, options?)` | POST | `/run/quick` |
+| `quickRun(file, options?)` | POST | `/run/quick` |
 
 ---
 
@@ -217,6 +219,17 @@ Colored badge for run/batch statuses:
 - `processing` → blue (pulsing)
 - `completed` → green
 - `failed` → red
+- `cancelled` → gray
+- `partial_failure` → orange
+
+### `DsoBadge`
+
+LED-style status badge with pulsing animation support. Color variants:
+- `pending` → amber, static LED
+- `processing` → amber, pulsing LED
+- `completed` → teal
+- `failed` → red
+- `cancelled` → gray, LED off
 - `partial_failure` → orange
 
 ### `ImageCompare`
@@ -262,7 +275,7 @@ Parses a YAML string and extracts config dicts + enabled booleans for each step/
 
 ### QuickRun (`pages/QuickRun.tsx`)
 
-- Image upload with preview
+- Image file upload with preview (uses FormData, not base64)
 - Profile dropdown — loads profile config into UI state
 - Custom Preprocessing toggle (with per-step cards)
 - Custom OCR Models toggle (with per-model cards)
@@ -270,9 +283,17 @@ Parses a YAML string and extracts config dicts + enabled booleans for each step/
 - YAML upload for both preprocessing and OCR configs
 - Results panel showing OCR output + LLM extraction
 
+### RunDetail (`pages/RunDetail.tsx`)
+
+- Pipeline run status and metadata
+- OCR results with confidence scores
+- Post-processing results (LLM + rules)
+- **Cancel button** (visible for pending/processing runs)
+- **Retry button** (visible for failed/completed/cancelled runs)
+
 ### BatchRunDetail (`pages/BatchRunDetail.tsx`)
 
-- Stats cards (total, completed, failed)
+- Stats cards (total, completed, failed, cancelled)
 - Progress bar
 - "Process All" button to trigger the batch
 - Runs table with status badges

@@ -16,6 +16,7 @@ class ParamDescriptorResponse(BaseModel):
     label: str = ""
     description: str = ""
     options: list[str] | None = None
+    disabled_options: dict[str, str] | None = None
     min: float | None = None
     max: float | None = None
     step: float | None = None

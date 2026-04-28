@@ -1,20 +1,11 @@
 models:
   tesseract:
     enabled: true
-    languages: ["eng", "jpn"]
-    psm: 3
-    oem: 3
   paddle:
-    enabled: false
-    languages: ["en", "ja"]
-    use_gpu: false
+    enabled: true
   easyocr:
-    enabled: false
-    languages: ["en", "ja"]
-    gpu: false
+    enabled: true
   glm_ocr:
     enabled: false
-    api_endpoint: ""
-    model: "google/gemini-2.5-flash"
-    api_key: ""
-    prompt: "Extract all text from this image."
+  ollama_vision:
+    enabled: true

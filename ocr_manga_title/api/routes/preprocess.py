@@ -16,6 +16,21 @@ from ocr_manga_title.preprocess.registry import STEP_ORDER, STEP_REGISTRY, get_a
 from ocr_manga_title.services.image import decode_bytes, encode_image
 from ocr_manga_title.services.preprocess import get_step_instance
 
+SYNC_BLOCKED_METHODS = {"edsr"}
+
+SYNC_BLOCKED_DETAIL = (
+    "EDSR super-resolution is too slow on CPU for interactive use. "
+    "Use FSRCNN or cubic for previews, or include EDSR in a pipeline profile."
+)
+
+
+def _check_sync_blocked(step_name: str, config: dict) -> None:
+    if step_name == "upscale" and config.get("method") in SYNC_BLOCKED_METHODS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=SYNC_BLOCKED_DETAIL,
+        )
+
 router = APIRouter()
 
 
@@ -48,6 +63,7 @@ async def preview_step(
         )
 
     parsed_params = json.loads(params)
+    _check_sync_blocked(step_name, parsed_params)
 
     try:
         raw = await file.read()
@@ -118,6 +134,7 @@ async def preview_pipeline(
             continue
 
         step = get_step_instance(step_name)
+        _check_sync_blocked(step_name, step_config)
         step_start = time.monotonic()
         try:
             result_img, metadata = step.process(current_image, step_config)

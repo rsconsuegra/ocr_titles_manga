@@ -1,5 +1,5 @@
-import type { CatalogEntryResponse, PaginatedResponse } from "./types";
 import { apiFetch } from "./pipeline";
+import type { CatalogEntryResponse, PaginatedResponse } from "./types";
 
 export function getCatalogExportUrl(): string {
   const base = import.meta.env.VITE_API_URL || "";

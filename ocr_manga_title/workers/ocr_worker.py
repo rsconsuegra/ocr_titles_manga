@@ -6,11 +6,14 @@ from pathlib import Path
 
 import dramatiq
 from sqlalchemy import select
-
-import ocr_manga_title.workers.broker  # noqa: F401
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from ocr_manga_title.config import load_config, load_preprocess_config
+import ocr_manga_title.workers.broker  # noqa: F401
+from ocr_manga_title.config import (
+    load_config,
+    load_preprocess_config,
+    resolve_model_configs,
+)
 from ocr_manga_title.db.crud import list_model_configs, update_batch_progress
 from ocr_manga_title.db.enums import RunStatus
 from ocr_manga_title.db.models import PipelineRun
@@ -86,14 +89,22 @@ def _run_async(coro):
 
 
 async def _get_model_configs(session: AsyncSession) -> dict[str, ModelConfigSchema]:
-    rows = await list_model_configs(session, enabled_only=True)
+    rows = await list_model_configs(session, enabled_only=False)
+    db_overrides = {
+        row.model_name: {"is_enabled": row.is_enabled, "parameters": row.parameters or {}}
+        for row in rows
+    }
+    resolved = resolve_model_configs(db_overrides)
+
     configs = {}
-    for row in rows:
-        configs[row.model_name] = ModelConfigSchema(
-            name=row.model_name,
-            enabled=row.is_enabled,
-            language=row.language_hint or "",
-            parameters=row.parameters or {},
+    for name, cfg in resolved.items():
+        if not cfg.enabled:
+            continue
+        configs[name] = ModelConfigSchema(
+            name=name,
+            enabled=True,
+            language="",
+            parameters=cfg.parameters,
         )
     return configs
 
@@ -199,18 +210,30 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
                     snapshot.get("preprocess_steps", {})
                 )
                 enable_llm = snapshot.get("enable_llm", True)
+                llm_prov = snapshot.get("llm_provider", "openrouter")
+                llm_cfg = snapshot.get("llm_config")
             else:
                 ocr_models_snapshot = {}
                 model_configs = await _get_model_configs(session)
                 preprocess_raw = load_preprocess_config(PREPROCESS_CONFIG_PATH)
                 enable_llm = True
+                llm_prov = "openrouter"
+                llm_cfg = None
+
+            app_config.llm_provider = llm_prov
 
             _require_memory("load OCR models")
+
+            logger.info(
+                "Pipeline run %s started for image %s",
+                run_id, run.input_image_path,
+            )
 
             engine = OCREngine(
                 config=app_config,
                 ocr_config=model_configs,
                 preprocess_config=preprocess_raw,
+                llm_config=llm_cfg,
             )
 
             await _check_cancelled(session, run_uuid)
@@ -241,7 +264,7 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
             except Exception as cache_err:
                 logger.warning("Failed to cache OCR results: %s", cache_err)
 
-            await save_pipeline_results(session, run.id, pipeline_result)
+            await save_pipeline_results(session, run.id, pipeline_result, llm_config=llm_cfg)
 
             run.status = RunStatus.COMPLETED
             run.completed_at = datetime.now(UTC).replace(tzinfo=None)

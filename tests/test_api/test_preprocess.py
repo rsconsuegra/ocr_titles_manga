@@ -19,7 +19,7 @@ async def test_list_steps(client):
     data = response.json()
     assert len(data) == 5
     names = [s["name"] for s in data]
-    assert names == ["roi", "grayscale", "upscale", "denoise", "binarize"]
+    assert names == ["roi", "upscale", "grayscale", "denoise", "binarize"]
     roi = data[0]
     assert roi["label"] == "Region of Interest"
     assert any(p["name"] == "method" for p in roi["params"])
@@ -167,5 +167,5 @@ async def test_export_pipeline_empty(client):
     data = response.json()
     yaml_str = data["yaml"]
     assert "enabled: true" in yaml_str
-    for name in ["roi", "grayscale", "upscale", "denoise", "binarize"]:
+    for name in ["roi", "upscale", "grayscale", "denoise", "binarize"]:
         assert f"{name}:" in yaml_str
