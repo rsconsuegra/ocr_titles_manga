@@ -3,7 +3,7 @@
 import logging
 import time
 
-from ocr_manga_title.api.schemas.ocr import LLMResultData, OCRResultData
+from ocr_manga_title.api.schemas.ocr import LLMResultData, OCRResultData, TextBlockData
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
 
 logger = logging.getLogger(__name__)
@@ -24,9 +24,7 @@ def build_model_config(model_name: str, overrides: dict) -> tuple | None:
     merged_params.update(overrides)
 
     languages = merged_params.pop("languages", "eng")
-    if isinstance(languages, list):
-        pass
-    elif isinstance(languages, str) and "+" in languages:
+    if isinstance(languages, str) and "+" in languages:
         languages = languages.split("+")
 
     config = ModelConfig(
@@ -74,6 +72,16 @@ def run_single_model(
             confidence=ocr_result.confidence,
             processing_time_ms=ocr_result.processing_time_ms,
             error=ocr_result.error,
+            blocks=(
+                [
+                    TextBlockData(
+                        bbox=b.bbox, text=b.text, confidence=b.confidence
+                    )
+                    for b in ocr_result.blocks
+                ]
+                if ocr_result.blocks
+                else None
+            ),
         )
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -134,19 +142,7 @@ def run_llm_extraction(
         config = load_config("config/configs.toml")
         effective_provider = provider or config.llm_provider
 
-        prompt_config = None
-        if llm_config:
-            system_prompt = llm_config.get("system_prompt", "")
-            if not system_prompt:
-                from prompts import DEFAULT_SYSTEM_PROMPT
-
-                system_prompt = DEFAULT_SYSTEM_PROMPT
-            prompt_config = LLMPromptConfig(
-                system_prompt=system_prompt,
-                user_prompt_template=llm_config.get("user_prompt_template", "{ocr_text}"),
-                temperature=float(llm_config.get("temperature", 0.1)),
-                max_ocr_chars=int(llm_config.get("max_ocr_chars", 0)),
-            )
+        prompt_config = LLMPromptConfig.from_dict(llm_config)
 
         extractor = LLMExtractor(
             openrouter_config=config.openrouter if effective_provider == "openrouter" else None,
@@ -167,6 +163,7 @@ def run_llm_extraction(
             source_method=extracted.source_method,
         )
     except Exception:
+        logger.warning("LLM extraction failed", exc_info=True)
         return LLMResultData(confidence=0.0, source_method="llm_failed")
 
 
@@ -195,4 +192,5 @@ def check_model_availability(model_name: str) -> bool:
         instance = descriptor.model_cls(cfg)
         return instance.is_available
     except Exception:
+        logger.debug("Model availability check failed for %s", model_name, exc_info=True)
         return False

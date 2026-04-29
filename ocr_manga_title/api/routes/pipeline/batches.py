@@ -1,5 +1,4 @@
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -7,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ocr_manga_title.api.dependencies import get_db
+from ocr_manga_title.api.routes._helpers import (
+    validate_and_save_file,
+    validate_file_count,
+    resolve_profile_snapshot,
+)
 from ocr_manga_title.api.schemas.batch import BatchRunDetailResponse, BatchRunResponse
 from ocr_manga_title.api.schemas.pipeline import (
     PaginatedResponse,
@@ -16,18 +20,13 @@ from ocr_manga_title.db.crud import (
     count_batch_runs,
     create_batch_run,
     create_pipeline_run,
-    get_batch_run,
     list_batch_runs,
 )
 from ocr_manga_title.db.enums import BatchStatus, RunStatus
 from ocr_manga_title.db.models import BatchRun
-from ocr_manga_title.services.config import build_run_config_snapshot
-from ocr_manga_title.settings import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, MAX_FILES, UPLOAD_DIR
 from ocr_manga_title.workers.ocr_worker import process_pipeline_run
 
 router = APIRouter()
-
-_UPLOAD_DIR = Path(UPLOAD_DIR)
 
 
 async def _save_uploaded_files(
@@ -38,23 +37,7 @@ async def _save_uploaded_files(
 ) -> list:
     runs = []
     for file in files:
-        ext = Path(file.filename or "").suffix.lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid format: {ext}. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
-            )
-
-        content = await file.read()
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File too large: {file.filename} (max 20MB)",
-            )
-
-        file_id = uuid.uuid4()
-        save_path = _UPLOAD_DIR / f"{file_id}{ext}"
-        save_path.write_bytes(content)
+        save_path = await validate_and_save_file(file)
 
         run = await create_pipeline_run(
             session=db,
@@ -74,29 +57,9 @@ async def create_batch(
     profile_id: uuid.UUID | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    if len(files) > MAX_FILES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum {MAX_FILES} files allowed",
-        )
-    if len(files) == 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="At least one file required",
-        )
+    validate_file_count(files)
 
-    config_snapshot = None
-    if profile_id is not None:
-        from ocr_manga_title.db.crud import get_profile
-
-        profile = await get_profile(db, profile_id)
-        if not profile:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
-            )
-        config_snapshot = build_run_config_snapshot(profile)
-
-    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    config_snapshot = await resolve_profile_snapshot(db, profile_id)
 
     batch = await create_batch_run(
         session=db, name=name, total_count=len(files)

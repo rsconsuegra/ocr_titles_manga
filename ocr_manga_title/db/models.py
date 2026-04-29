@@ -82,6 +82,7 @@ class OCRResult(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     processing_time_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocks: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="ocr_results")

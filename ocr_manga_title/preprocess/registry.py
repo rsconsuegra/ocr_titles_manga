@@ -174,6 +174,8 @@ STEP_REGISTRY: dict[str, StepDescriptor] = {
 
 STEP_ORDER = ["roi", "upscale", "grayscale", "denoise", "binarize"]
 
+SYNC_BLOCKED_METHODS = {"edsr"}
+
 
 def get_all_steps() -> list[StepDescriptor]:
     """Return all step descriptors in canonical pipeline order."""
@@ -183,3 +185,33 @@ def get_all_steps() -> list[StepDescriptor]:
 def get_step(name: str) -> StepDescriptor | None:
     """Return a single step descriptor by name, or ``None``."""
     return STEP_REGISTRY.get(name)
+
+
+_STEP_CLASSES: dict[str, type] | None = None
+
+
+def get_step_class(name: str) -> type:
+    """Return the step class for the given step name.
+
+    Imports are deferred to avoid pulling in heavy dependencies (cv2, etc.)
+    at module load time.
+    """
+    global _STEP_CLASSES
+    if _STEP_CLASSES is None:
+        from ocr_manga_title.preprocess.steps.binarize import BinarizeStep
+        from ocr_manga_title.preprocess.steps.denoise import DenoiseStep
+        from ocr_manga_title.preprocess.steps.grayscale import GrayscaleStep
+        from ocr_manga_title.preprocess.steps.roi import ROIStep
+        from ocr_manga_title.preprocess.steps.upscale import UpscaleStep
+
+        _STEP_CLASSES = {
+            "roi": ROIStep,
+            "grayscale": GrayscaleStep,
+            "binarize": BinarizeStep,
+            "upscale": UpscaleStep,
+            "denoise": DenoiseStep,
+        }
+    cls = _STEP_CLASSES.get(name)
+    if cls is None:
+        raise ValueError(f"Unknown step: {name}")
+    return cls

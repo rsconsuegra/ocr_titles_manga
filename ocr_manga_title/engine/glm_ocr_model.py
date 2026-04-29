@@ -1,17 +1,16 @@
 """Adapter wrapping any OpenAI-compatible vision API for OCR."""
 
-import base64
 import logging
 import time
 from pathlib import Path
-
-import openai
 
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
 from ocr_manga_title.schemas import ModelConfig, OCRResult
 
 logger = logging.getLogger(__name__)
+
+_VISION_CONFIDENCE = 0.8
 
 _MIME_MAP = {
     "png": "image/png",
@@ -46,18 +45,16 @@ class GLMOCRModel(BaseOCRModel):
         params = self._config.parameters or {}
         return bool(params.get("api_endpoint"))
 
-    def _get_client(self) -> openai.OpenAI:
+    def _get_client(self):
         if self._client is None:
+            import openai
+
             params = self._config.parameters or {}
             self._client = openai.OpenAI(
                 base_url=params.get("api_endpoint", ""),
                 api_key=params.get("api_key", ""),
             )
         return self._client
-
-    def _encode_image(self, image_path: str) -> str:
-        with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
 
     def run(self, image_path: str) -> OCRResult:
         """Run vision API OCR on the given image.
@@ -80,15 +77,14 @@ class GLMOCRModel(BaseOCRModel):
         if not self.is_available:
             raise ModelNotAvailableError("Vision API endpoint not configured")
 
-        path = Path(image_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Image not found: {image_path}")
+        self._validate_image_path(image_path)
 
         start = time.monotonic()
         try:
             client = self._get_client()
             params = self._config.parameters or {}
 
+            path = Path(image_path)
             ext = path.suffix.lower().lstrip(".")
             mime = _MIME_MAP.get(ext, "image/png")
             b64 = self._encode_image(image_path)
@@ -125,16 +121,10 @@ class GLMOCRModel(BaseOCRModel):
             return OCRResult(
                 raw_text=raw_text,
                 model_name=self.name,
-                confidence=0.8 if raw_text else 0.0,
+                confidence=_VISION_CONFIDENCE if raw_text else 0.0,
                 processing_time_ms=elapsed_ms,
             )
         except Exception as e:
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.warning("Vision API error for %s: %s", image_path, e)
-            return OCRResult(
-                raw_text="",
-                model_name=self.name,
-                confidence=0.0,
-                processing_time_ms=elapsed_ms,
-                error=str(e),
-            )
+            return self._make_error_result(str(e), elapsed_ms)

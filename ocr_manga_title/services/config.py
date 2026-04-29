@@ -11,5 +11,5 @@ def build_run_config_snapshot(profile: PipelineProfile | None) -> dict | None:
         "ocr_models": profile.ocr_models or {},
         "enable_llm": profile.enable_llm,
         "llm_provider": profile.llm_provider,
-        "llm_config": profile.llm_config if hasattr(profile, "llm_config") else None,
+        "llm_config": profile.llm_config,
     }

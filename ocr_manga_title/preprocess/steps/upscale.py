@@ -92,12 +92,13 @@ class UpscaleStep(BasePreProcessor):
         url = MODEL_URLS[method].format(scale=scale)
         logger.info("Downloading %s x%d model from %s", method, scale, url)
 
+        import urllib.error
         import urllib.request
 
         try:
             with urllib.request.urlopen(url, timeout=120) as resp:
                 model_path.write_bytes(resp.read())
-        except Exception as e:
+        except (OSError, urllib.error.URLError) as e:
             model_path.unlink(missing_ok=True)
             raise RuntimeError(f"Failed to download {model_path.name}: {e}") from e
 
@@ -174,7 +175,7 @@ class UpscaleStep(BasePreProcessor):
                     if line.startswith("MemAvailable:"):
                         return int(line.split()[1]) * 1024
         except (OSError, ValueError):
-            pass
+            logger.debug("/proc/meminfo unavailable — upscale memory guard disabled")
         return 0
 
     def _estimate_dnn_peak_bytes(self, h: int, w: int, method: str, scale: int) -> int:
@@ -210,7 +211,7 @@ class UpscaleStep(BasePreProcessor):
         if not self._is_method_available(method, scale):
             try:
                 self._download_model(method, scale)
-            except Exception as e:
+            except RuntimeError as e:
                 raise RuntimeError(
                     f"Failed to download {method.upper()} model: {e}"
                 ) from e
@@ -250,10 +251,9 @@ class UpscaleStep(BasePreProcessor):
     ) -> tuple[np.ndarray, dict]:
         try:
             import realesrgan  # noqa: F401
-
-            raise NotImplementedError(
-                "Real-ESRGAN integration pending realesrgan package setup"
-            )
         except ImportError:
             logger.warning("realesrgan not installed, falling back to cubic")
             return self._upscale_cubic(image, scale)
+        raise NotImplementedError(
+            "Real-ESRGAN integration pending realesrgan package setup"
+        )

@@ -1,11 +1,11 @@
 import uuid
-from datetime import UTC, datetime
 
-from sqlalchemy import func as sa_func, select
+from sqlalchemy import func as sa_func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ocr_manga_title.db.enums import BatchStatus, RunStatus
+from ocr_manga_title.schemas import utcnow
 from ocr_manga_title.db.models import (
     BatchRun,
     CatalogEntry,
@@ -517,7 +517,7 @@ async def update_batch_progress(
             batch.status = BatchStatus.COMPLETED
         else:
             batch.status = BatchStatus.PARTIAL_FAILURE
-        batch.completed_at = datetime.now(UTC).replace(tzinfo=None)
+        batch.completed_at = utcnow()
 
     await session.flush()
     await session.refresh(batch)
@@ -526,7 +526,7 @@ async def update_batch_progress(
 
 async def _unset_default_profiles(session: AsyncSession) -> None:
     stmt = (
-        PipelineProfile.__table__.update()
+        update(PipelineProfile)
         .where(PipelineProfile.is_default.is_(True))
         .values(is_default=False)
     )

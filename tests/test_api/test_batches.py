@@ -114,7 +114,7 @@ async def test_trigger_batch_enqueues_workers(client, blank_image, monkeypatch):
         def send(self, run_id):
             sent_ids.append(run_id)
 
-    from ocr_manga_title.api.routes import batches as batches_module
+    from ocr_manga_title.api.routes.pipeline import batches as batches_module
     monkeypatch.setattr(batches_module, "process_pipeline_run", FakeActor())
 
     response = await client.post(f"/api/v1/batches/{batch_id}/trigger")

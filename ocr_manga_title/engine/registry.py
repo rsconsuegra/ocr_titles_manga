@@ -2,13 +2,43 @@
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ocr_manga_title.preprocess.registry import ParamDescriptor
 
 if TYPE_CHECKING:
     from ocr_manga_title.engine.base import BaseOCRModel
+
+
+class _LazyModelClass:
+    """Proxy that defers model-class import until first attribute access."""
+
+    def __init__(self, dotted_path: str) -> None:
+        self._dotted_path = dotted_path
+        self._resolved: type[BaseOCRModel] | None = None
+
+    def _resolve(self) -> type[BaseOCRModel]:
+        if self._resolved is None:
+            module_path, _, class_name = self._dotted_path.rpartition(".")
+            mod = importlib.import_module(module_path)
+            self._resolved = getattr(mod, class_name)
+        return self._resolved
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self._resolve()(*args, **kwargs)
+
+    def __instancecheck__(self, instance: Any) -> bool:
+        return isinstance(instance, self._resolve())
+
+    def __subclasscheck__(self, subclass: Any) -> bool:
+        return issubclass(subclass, self._resolve())
+
+    def __repr__(self) -> str:
+        if self._resolved is not None:
+            return repr(self._resolved)
+        return f"<lazy {self._dotted_path}>"
 
 
 @dataclass(frozen=True)
@@ -67,6 +97,13 @@ def _build_tesseract(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
                 max=3,
                 step=1,
             ),
+            ParamDescriptor(
+                name="detailed",
+                type="boolean",
+                default=False,
+                label="Detailed",
+                description="Return bounding boxes and per-block details.",
+            ),
         ],
     )
 
@@ -92,6 +129,13 @@ def _build_paddle(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
                 default=False,
                 label="Use GPU",
                 description="Enable CUDA acceleration.",
+            ),
+            ParamDescriptor(
+                name="detailed",
+                type="boolean",
+                default=False,
+                label="Detailed",
+                description="Return bounding boxes and per-block details.",
             ),
         ],
     )
@@ -129,6 +173,20 @@ def _build_easyocr(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
                 default=False,
                 label="Use GPU",
                 description="Enable CUDA acceleration.",
+            ),
+            ParamDescriptor(
+                name="paragraph",
+                type="boolean",
+                default=False,
+                label="Paragraph",
+                description="Combine detected text into paragraphs.",
+            ),
+            ParamDescriptor(
+                name="detailed",
+                type="boolean",
+                default=False,
+                label="Detailed",
+                description="Return bounding boxes and per-block details.",
             ),
         ],
     )
@@ -202,27 +260,16 @@ def _build_ollama_vision(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
 
 
 def _build_registry() -> dict[str, ModelDescriptor]:
-    from ocr_manga_title.engine.easyocr_model import EasyOCRModel
-    from ocr_manga_title.engine.glm_ocr_model import GLMOCRModel
-    from ocr_manga_title.engine.ollama_vision_model import OllamaVisionModel
-    from ocr_manga_title.engine.paddle_model import PaddleModel
-    from ocr_manga_title.engine.tesseract_model import TesseractModel
-
     return {
-        "tesseract": _build_tesseract(TesseractModel),
-        "paddle": _build_paddle(PaddleModel),
-        "easyocr": _build_easyocr(EasyOCRModel),
-        "glm_ocr": _build_glm_ocr(GLMOCRModel),
-        "ollama_vision": _build_ollama_vision(OllamaVisionModel),
+        "tesseract": _build_tesseract(_LazyModelClass("ocr_manga_title.engine.tesseract_model.TesseractModel")),
+        "paddle": _build_paddle(_LazyModelClass("ocr_manga_title.engine.paddle_model.PaddleModel")),
+        "easyocr": _build_easyocr(_LazyModelClass("ocr_manga_title.engine.easyocr_model.EasyOCRModel")),
+        "glm_ocr": _build_glm_ocr(_LazyModelClass("ocr_manga_title.engine.glm_ocr_model.GLMOCRModel")),
+        "ollama_vision": _build_ollama_vision(_LazyModelClass("ocr_manga_title.engine.ollama_vision_model.OllamaVisionModel")),
     }
 
 
 MODEL_REGISTRY: dict[str, ModelDescriptor] = _build_registry()
-
-
-def get_all_models() -> list[ModelDescriptor]:
-    """Return all model descriptors in registry order."""
-    return list(MODEL_REGISTRY.values())
 
 
 def get_model(name: str) -> ModelDescriptor | None:

@@ -1,6 +1,5 @@
 """Adapter wrapping `pytesseract <https://github.com/madmaze/pytesseract>`_ for Tesseract OCR."""
 
-import logging
 import time
 from pathlib import Path
 
@@ -8,9 +7,10 @@ from PIL import Image, UnidentifiedImageError
 
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
-from ocr_manga_title.schemas import ModelConfig, OCRResult
+from ocr_manga_title.schemas import ModelConfig, OCRResult, TextBlock
 
-logger = logging.getLogger(__name__)
+
+_MIN_CONFIDENCE = 30
 
 
 class TesseractModel(BaseOCRModel):
@@ -38,6 +38,7 @@ class TesseractModel(BaseOCRModel):
             self._lang_string = str(languages)
         self._psm = config.parameters.get("psm", 3)
         self._oem = config.parameters.get("oem", 3)
+        self._detailed = config.parameters.get("detailed", False)
         self._tess_config = f"--psm {self._psm} --oem {self._oem}"
         self._available: bool | None = None
 
@@ -55,7 +56,7 @@ class TesseractModel(BaseOCRModel):
 
                 pytesseract.get_tesseract_version()
                 self._available = True
-            except Exception:
+            except (OSError, RuntimeError):
                 self._available = False
         return self._available
 
@@ -82,8 +83,7 @@ class TesseractModel(BaseOCRModel):
         from pytesseract import Output
 
         path = Path(image_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Image not found: {image_path}")
+        self._validate_image_path(image_path)
 
         if not self.is_available:
             raise ModelNotAvailableError(
@@ -94,13 +94,7 @@ class TesseractModel(BaseOCRModel):
             image = Image.open(path)
             image.load()
         except UnidentifiedImageError as e:
-            return OCRResult(
-                raw_text="",
-                model_name=self.name,
-                confidence=0.0,
-                processing_time_ms=0,
-                error=str(e),
-            )
+            return self._make_error_result(str(e))
 
         start = time.monotonic()
         try:
@@ -114,12 +108,30 @@ class TesseractModel(BaseOCRModel):
 
             texts = []
             confs = []
+            blocks = []
             for i, text in enumerate(data["text"]):
                 conf = int(data["conf"][i])
                 if conf >= 0 and text.strip():
                     texts.append(text)
-                if conf >= 30:
+                if conf >= _MIN_CONFIDENCE:
                     confs.append(conf)
+                if self._detailed and conf >= _MIN_CONFIDENCE and text.strip():
+                    left = int(data["left"][i])
+                    top = int(data["top"][i])
+                    w = int(data["width"][i])
+                    h = int(data["height"][i])
+                    blocks.append(
+                        TextBlock(
+                            bbox=[
+                                [left, top],
+                                [left + w, top],
+                                [left + w, top + h],
+                                [left, top + h],
+                            ],
+                            text=text,
+                            confidence=conf / 100.0,
+                        )
+                    )
 
             raw_text = " ".join(texts)
             confidence = sum(confs) / len(confs) / 100.0 if confs else 0.0
@@ -129,6 +141,7 @@ class TesseractModel(BaseOCRModel):
                 model_name=self.name,
                 confidence=confidence,
                 processing_time_ms=elapsed_ms,
+                blocks=blocks if self._detailed else None,
             )
         except FileNotFoundError:
             elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -145,19 +158,10 @@ class TesseractModel(BaseOCRModel):
                     processing_time_ms=elapsed_ms,
                 )
             except Exception as fallback_err:
-                return OCRResult(
-                    raw_text="",
-                    model_name=self.name,
-                    confidence=0.0,
-                    processing_time_ms=elapsed_ms,
-                    error=f"image_to_data TSV missing, fallback failed: {fallback_err}",
+                return self._make_error_result(
+                    f"image_to_data TSV missing, fallback failed: {fallback_err}",
+                    elapsed_ms,
                 )
         except pytesseract.TesseractError as e:
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            return OCRResult(
-                raw_text="",
-                model_name=self.name,
-                confidence=0.0,
-                processing_time_ms=elapsed_ms,
-                error=str(e),
-            )
+            return self._make_error_result(str(e), elapsed_ms)

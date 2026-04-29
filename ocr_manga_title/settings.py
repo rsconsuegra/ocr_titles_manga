@@ -52,6 +52,9 @@ MAX_FILES: int = 10
 # --- Images ---
 IMAGES_PATH: str = os.getenv("IMAGES_PATH", "/app/uploads")
 
+# --- Model data ---
+MODEL_DATA_DIR: str = os.getenv("MODEL_DATA_DIR", "/app/model_data")
+
 # --- Cache ---
 CACHE_DIR: str = os.getenv("CACHE_DIR", "/app/cache")
 CACHE_TTL_DAYS: int = int(os.getenv("CACHE_TTL_DAYS", "7"))

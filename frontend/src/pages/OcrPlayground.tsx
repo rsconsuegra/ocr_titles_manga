@@ -199,6 +199,8 @@ export default function OcrPlayground() {
                 confidence={result.ocr.confidence}
                 rawText={result.ocr.raw_text}
                 error={result.ocr.error}
+                blocks={result.ocr.blocks}
+                imageDataUrl={imageDataUrl}
                 variant="full"
               />
 

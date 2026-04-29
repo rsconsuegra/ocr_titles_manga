@@ -7,7 +7,7 @@ import time
 
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
-from ocr_manga_title.schemas import ModelConfig, OCRResult
+from ocr_manga_title.schemas import ModelConfig, OCRResult, TextBlock
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class PaddleModel(BaseOCRModel):
     def __init__(self, config: ModelConfig):
         self._config = config
         self._ocr = None
+        self._detailed = config.parameters.get("detailed", False)
 
     @property
     def name(self) -> str:
@@ -69,7 +70,7 @@ class PaddleModel(BaseOCRModel):
                     use_gpu=use_gpu,
                     show_log=False,
                 )
-            except Exception:
+            except RuntimeError:
                 if use_gpu:
                     logger.warning("GPU init failed, falling back to CPU")
                     self._ocr = PaddleOCR(
@@ -81,6 +82,9 @@ class PaddleModel(BaseOCRModel):
                 else:
                     raise
             return self._ocr
+
+    def warmup(self) -> None:
+        self._load_model()
 
     def run(self, image_path: str) -> OCRResult:
         """Run PaddleOCR on the given image.
@@ -107,11 +111,20 @@ class PaddleModel(BaseOCRModel):
 
             texts = []
             confidences = []
+            blocks = []
             for page in result or []:
                 for line in page or []:
                     if line and len(line) >= 2:
                         texts.append(line[1][0])
                         confidences.append(line[1][1])
+                        if self._detailed:
+                            blocks.append(
+                                TextBlock(
+                                    bbox=[[float(p[0]), float(p[1])] for p in line[0]],
+                                    text=line[1][0],
+                                    confidence=float(line[1][1]),
+                                )
+                            )
 
             raw_text = "\n".join(texts)
             avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
@@ -122,14 +135,9 @@ class PaddleModel(BaseOCRModel):
                 model_name=self.name,
                 confidence=round(avg_conf, 4),
                 processing_time_ms=elapsed_ms,
+                blocks=blocks if self._detailed else None,
             )
         except Exception as e:
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.warning("PaddleOCR error for %s: %s", image_path, e)
-            return OCRResult(
-                raw_text="",
-                model_name=self.name,
-                confidence=0.0,
-                processing_time_ms=elapsed_ms,
-                error=str(e),
-            )
+            return self._make_error_result(str(e), elapsed_ms)

@@ -28,6 +28,7 @@ class OCRResultResponse(BaseModel):
     confidence: float
     processing_time_ms: int
     error: str | None = None
+    blocks: list[dict] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -37,6 +38,13 @@ class OCRResultDetailResponse(OCRResultResponse):
     """OCR result with nested post-processing results."""
 
     post_processing_results: list[PostProcessingResultResponse] = []
+
+
+class PipelineActionResponse(BaseModel):
+    """Response for pipeline trigger / cancel actions."""
+
+    message: str
+    run_id: str
 
 
 class PipelineRunDetailResponse(PipelineRunResponse):

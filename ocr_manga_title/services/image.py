@@ -1,13 +1,32 @@
 """Image encoding/decoding utilities shared across routes and services."""
 
+import atexit
 import base64
 import tempfile
 from io import BytesIO
+from pathlib import Path
 
 import cv2
 import numpy as np
 from fastapi import UploadFile
 from PIL import Image
+
+_temp_files: list[str] = []
+
+
+def _cleanup_temp_files() -> None:
+    for path in _temp_files:
+        Path(path).unlink(missing_ok=True)
+
+
+atexit.register(_cleanup_temp_files)
+
+
+def _create_temp_file(suffix: str = ".png") -> str:
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp.close()
+    _temp_files.append(tmp.name)
+    return tmp.name
 
 
 def decode_image(data_url: str) -> np.ndarray:
@@ -45,29 +64,26 @@ def decode_and_save(data_url: str) -> str:
         data_url = data_url.split(",", 1)[1]
     raw = base64.b64decode(data_url)
     pil_img = Image.open(BytesIO(raw))
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    pil_img.save(tmp, format="PNG")
-    tmp.close()
-    return tmp.name
+    tmp_path = _create_temp_file()
+    pil_img.save(tmp_path, format="PNG")
+    return tmp_path
 
 
 async def save_upload(file: UploadFile) -> str:
     """Read an uploaded file and save to a temp file. Returns the file path."""
     raw = await file.read()
     pil_img = Image.open(BytesIO(raw))
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    pil_img.save(tmp, format="PNG")
-    tmp.close()
-    return tmp.name
+    tmp_path = _create_temp_file()
+    pil_img.save(tmp_path, format="PNG")
+    return tmp_path
 
 
 def save_bytes(raw: bytes) -> str:
     """Save raw image bytes to a temp PNG file. Returns the file path."""
     pil_img = Image.open(BytesIO(raw))
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    pil_img.save(tmp, format="PNG")
-    tmp.close()
-    return tmp.name
+    tmp_path = _create_temp_file()
+    pil_img.save(tmp_path, format="PNG")
+    return tmp_path
 
 
 def decode_bytes(raw: bytes) -> np.ndarray:
@@ -83,7 +99,6 @@ def numpy_to_temp_file(image: np.ndarray) -> str:
     else:
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         pil_img = Image.fromarray(rgb)
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    pil_img.save(tmp, format="PNG")
-    tmp.close()
-    return tmp.name
+    tmp_path = _create_temp_file()
+    pil_img.save(tmp_path, format="PNG")
+    return tmp_path

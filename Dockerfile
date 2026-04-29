@@ -42,9 +42,11 @@ COPY --from=builder --chown=appuser:appuser /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p /app/uploads /app/cache && chown -R appuser:appuser /app/uploads /app/cache
+RUN mkdir -p /app/uploads /app/cache /app/model_data/paddleocr /app/model_data/easyocr && chown -R appuser:appuser /app/uploads /app/cache /app/model_data
 
 ENV MODEL_DIR=/app/models
+ENV MODEL_DATA_DIR=/app/model_data
+ENV PADDLEOCR_HOME=/app/model_data/paddleocr
 RUN mkdir -p /app/models && python -c "\
 from ocr_manga_title.preprocess.steps.upscale import UpscaleStep; \
 step = UpscaleStep(); \

@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from ocr_manga_title.preprocess.base import BasePreProcessor, run_step_with_timeout
+from ocr_manga_title.preprocess.registry import STEP_ORDER as _STEP_ORDER
 from ocr_manga_title.schemas import PreProcessResult, PreProcessStepResult
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class PreProcessingPipeline:
     can be individually enabled or disabled via the configuration dict.
     """
 
-    STEP_ORDER = ["roi", "upscale", "grayscale", "denoise", "binarize"]
+    STEP_ORDER = _STEP_ORDER
 
     def __init__(self, config: dict):
         self._config = config.get("preprocessing", {})
@@ -37,26 +38,16 @@ class PreProcessingPipeline:
         return steps
 
     def _create_step(self, name: str) -> BasePreProcessor | None:
-        from ocr_manga_title.preprocess.steps.binarize import BinarizeStep
-        from ocr_manga_title.preprocess.steps.denoise import DenoiseStep
-        from ocr_manga_title.preprocess.steps.grayscale import GrayscaleStep
-        from ocr_manga_title.preprocess.steps.roi import ROIStep
-        from ocr_manga_title.preprocess.steps.upscale import UpscaleStep
+        from ocr_manga_title.preprocess.registry import get_step_class
 
-        steps_map: dict[str, type[BasePreProcessor]] = {
-            "roi": ROIStep,
-            "grayscale": GrayscaleStep,
-            "binarize": BinarizeStep,
-            "upscale": UpscaleStep,
-            "denoise": DenoiseStep,
-        }
-
-        step_cls = steps_map.get(name)
-        if step_cls is not None:
-            step = step_cls()
-            if step.is_available:
-                return step
-            logger.warning("Preprocessing step '%s' not available", name)
+        try:
+            step_cls = get_step_class(name)
+        except ValueError:
+            return None
+        step = step_cls()
+        if step.is_available:
+            return step
+        logger.warning("Preprocessing step '%s' not available", name)
         return None
 
     def _save_image(self, image: np.ndarray, label: str, uid: str) -> str:

@@ -12,7 +12,7 @@ import hashlib
 import logging
 import uuid
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,7 +53,7 @@ async def get_active_key(session: AsyncSession, service_name: str, env_default: 
     if row:
         try:
             return decrypt_value(row.encrypted_api_key)
-        except Exception:
+        except InvalidToken:
             logger.warning("Failed to decrypt stored key for %s, falling back to env", service_name)
     return env_default or None
 
@@ -106,7 +106,7 @@ async def get_credential_info(session: AsyncSession, service_name: str, env_defa
                 "source": "database",
                 "is_active": True,
             }
-        except Exception:
+        except InvalidToken:
             pass
     has_env = bool(env_default)
     return {
@@ -133,5 +133,5 @@ async def validate_openrouter_key(api_key: str) -> tuple[bool, str]:
             if resp.status_code == 401:
                 return False, "Invalid API key (401 Unauthorized)"
             return False, f"Unexpected status: {resp.status_code}"
-    except Exception as e:
+    except httpx.HTTPError as e:
         return False, f"Connection error: {e}"

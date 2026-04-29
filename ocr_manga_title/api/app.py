@@ -6,20 +6,24 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from ocr_manga_title.api.routes import (
-    batches,
+from ocr_manga_title.api.routes.config import (
     catalog,
-    inputs,
     llm as llm_route,
+    ollama as ollama_route,
+    profiles,
+    settings as settings_route,
+)
+from ocr_manga_title.api.routes.ocr import (
     models as models_route,
     ocr,
-    ollama as ollama_route,
-    pipeline,
     preprocess,
-    profiles,
+)
+from ocr_manga_title.api.routes.pipeline import (
+    batches,
+    inputs,
     results,
     run as run_route,
-    settings as settings_route,
+    runs,
 )
 from ocr_manga_title.exceptions import (
     ConfigurationError,
@@ -50,9 +54,20 @@ async def _cache_sweeper():
         pass
 
 
+def _run_warmup():
+    import warnings
+
+    warnings.filterwarnings("ignore", category=SyntaxWarning)
+    from ocr_manga_title.services.warmup import warmup_models
+
+    warmed = warmup_models()
+    logger.info("Startup warmup finished: %s", warmed)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage application startup/shutdown lifecycle."""
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _run_warmup)
     task = asyncio.create_task(_cache_sweeper())
     yield
     task.cancel()
@@ -66,7 +81,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application instance."""
     app = FastAPI(
         title="Manga OCR API",
-        version="0.2.0",
+        version="0.4.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         lifespan=lifespan,
@@ -116,7 +131,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(inputs.router, prefix="/api/v1/inputs", tags=["inputs"])
-    app.include_router(pipeline.router, prefix="/api/v1/pipeline", tags=["pipeline"])
+    app.include_router(runs.router, prefix="/api/v1/pipeline", tags=["pipeline"])
     app.include_router(results.router, prefix="/api/v1/results", tags=["results"])
     app.include_router(catalog.router, prefix="/api/v1/catalog", tags=["catalog"])
     app.include_router(models_route.router, prefix="/api/v1/models", tags=["models"])

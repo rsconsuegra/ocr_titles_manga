@@ -26,7 +26,7 @@ class TestTesseractModel:
         model = TesseractModel(config)
         assert model.is_available is True
 
-    @patch("pytesseract.get_tesseract_version", side_effect=Exception("not found"))
+    @patch("pytesseract.get_tesseract_version", side_effect=OSError("not found"))
     def test_tesseract_is_available_when_not_installed(self, mock_ver):
         config = ModelConfig(name="tesseract", parameters={"languages": ["eng", "jpn"]})
         model = TesseractModel(config)

@@ -3,6 +3,11 @@
 from datetime import UTC, datetime
 from typing import Any
 
+
+def utcnow() -> datetime:
+    """Return a naive UTC datetime (no tzinfo), matching the DB convention."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from ocr_manga_title.exceptions import ConfigurationError
@@ -58,6 +63,26 @@ class LLMPromptConfig(BaseModel):
     def render_user_prompt(self, ocr_text: str) -> str:
         trimmed = ocr_text[:self.max_ocr_chars] if self.max_ocr_chars > 0 else ocr_text
         return self.user_prompt_template.format_map({"ocr_text": trimmed})
+
+    @classmethod
+    def from_dict(cls, llm_config: dict | None) -> "LLMPromptConfig | None":
+        if not llm_config:
+            return None
+        system_prompt = llm_config.get("system_prompt", "")
+        if not system_prompt:
+            from pathlib import Path
+
+            prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "llm" / "extract_title_v1.md"
+            try:
+                system_prompt = prompt_path.read_text().strip()
+            except FileNotFoundError:
+                system_prompt = ""
+        return cls(
+            system_prompt=system_prompt,
+            user_prompt_template=llm_config.get("user_prompt_template", "{ocr_text}"),
+            temperature=float(llm_config.get("temperature", 0.1)),
+            max_ocr_chars=int(llm_config.get("max_ocr_chars", 0)),
+        )
 
 
 class AppConfig(BaseModel):
@@ -168,6 +193,14 @@ def _levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+class TextBlock(BaseModel):
+    """A single detected text region with bounding box."""
+
+    bbox: list[list[float]]
+    text: str
+    confidence: float
+
+
 class OCRResult(BaseModel):
     """Raw output from a single OCR model run."""
 
@@ -176,6 +209,7 @@ class OCRResult(BaseModel):
     confidence: float = 0.0
     processing_time_ms: int = 0
     error: str | None = None
+    blocks: list[TextBlock] | None = None
 
 
 class ExtractedTitle(BaseModel):
@@ -222,6 +256,6 @@ class PipelineResult(BaseModel):
     input_path: str
     ocr_results: list[OCRResult] = Field(default_factory=list)
     extracted: ExtractedTitle | None = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    timestamp: datetime = Field(default_factory=utcnow)
     errors: list[str] = Field(default_factory=list)
     preprocess_result: PreProcessResult | None = None

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { cancelRun,getRunDetail, overrideResult, triggerPipeline } from "../api/pipeline";
+import { cancelRun, getRunDetail, overrideResult, triggerPipeline } from "../api/pipeline";
 import type { PostProcessingResultDetail, RunDetailResponse } from "../api/types";
-import ConfidenceMeter from "../components/ConfidenceMeter";
+import OcrResultCard from "../components/OcrResultCard";
 import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import RunStatusBadge from "../components/RunStatusBadge";
 
@@ -160,20 +160,22 @@ export default function RunDetail() {
       )}
 
       {run.ocr_results.map((ocr) => (
-        <DsoCard key={ocr.id} className="mb-4">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="font-bold text-bright">{ocr.model_name}</span>
-            <ConfidenceMeter value={ocr.confidence} />
-            <span className="text-xs text-muted">{ocr.processing_time_ms}ms</span>
-          </div>
-          <pre className="mb-3 max-h-32 overflow-auto rounded bg-lcd p-2 text-sm text-bright/80">{ocr.raw_text}</pre>
-          {ocr.error && <p className="text-sm text-amber">{ocr.error}</p>}
+        <div key={ocr.id} className="mb-4">
+          <OcrResultCard
+            modelName={ocr.model_name}
+            processingTimeMs={ocr.processing_time_ms}
+            confidence={ocr.confidence}
+            rawText={ocr.raw_text}
+            error={ocr.error}
+            blocks={ocr.blocks}
+            imageDataUrl={`/api/v1/pipeline/runs/${run.id}/image`}
+            variant={ocr.blocks && ocr.blocks.length > 0 ? "full" : "compact"}
+          />
 
           {ocr.post_processing_results.map((pp) => (
             <div key={pp.id} className="mt-3 neo-inset rounded-lg p-3">
               <div className="mb-1 flex items-center gap-2">
                 <span className="tech-label-bright">{pp.processing_type}</span>
-                <ConfidenceMeter value={pp.confidence} />
               </div>
               <div className="text-sm">
                 <p><span className="text-muted">EN:</span> <span className="text-bright">{pp.title_en || "\u2014"}</span></p>
@@ -220,7 +222,7 @@ export default function RunDetail() {
               )}
             </div>
           ))}
-        </DsoCard>
+        </div>
       ))}
     </div>
   );

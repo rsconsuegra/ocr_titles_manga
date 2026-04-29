@@ -5,6 +5,7 @@ import time
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
+from ocr_manga_title.api.schemas.ocr import YamlExportResponse
 from ocr_manga_title.api.schemas.preprocess import (
     ExportPipelineRequest,
     PipelineStepResult,
@@ -12,11 +13,9 @@ from ocr_manga_title.api.schemas.preprocess import (
     PreviewStepResponse,
     StepDescriptorResponse,
 )
-from ocr_manga_title.preprocess.registry import STEP_ORDER, STEP_REGISTRY, get_all_steps
+from ocr_manga_title.preprocess.registry import STEP_ORDER, STEP_REGISTRY, SYNC_BLOCKED_METHODS, get_all_steps
 from ocr_manga_title.services.image import decode_bytes, encode_image
 from ocr_manga_title.services.preprocess import get_step_instance
-
-SYNC_BLOCKED_METHODS = {"edsr"}
 
 SYNC_BLOCKED_DETAIL = (
     "EDSR super-resolution is too slow on CPU for interactive use. "
@@ -62,7 +61,13 @@ async def preview_step(
             detail=f"Unknown step: {step_name}",
         )
 
-    parsed_params = json.loads(params)
+    try:
+        parsed_params = json.loads(params)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in params",
+        )
     _check_sync_blocked(step_name, parsed_params)
 
     try:
@@ -103,7 +108,13 @@ async def preview_pipeline(
     steps: str = Form("{}"),
 ):
     """Preview the full preprocessing pipeline, returning an image after each step."""
-    parsed_steps = json.loads(steps)
+    try:
+        parsed_steps = json.loads(steps)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in steps",
+        )
 
     try:
         raw = await file.read()
@@ -167,7 +178,7 @@ async def preview_pipeline(
     return PreviewPipelineResponse(steps=results, total_processing_time_ms=total_ms)
 
 
-@router.post("/export")
+@router.post("/export", response_model=YamlExportResponse)
 async def export_pipeline(body: ExportPipelineRequest):
     """Export the configured pipeline as a YAML string matching preprocess.yaml format."""
     import yaml
@@ -187,4 +198,4 @@ async def export_pipeline(body: ExportPipelineRequest):
     }
 
     yaml_str = yaml.dump(payload, default_flow_style=False, sort_keys=False)
-    return {"yaml": yaml_str}
+    return YamlExportResponse(yaml=yaml_str)

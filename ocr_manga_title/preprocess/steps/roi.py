@@ -90,7 +90,7 @@ class ROIStep(BasePreProcessor):
         x, y, bw, bh = merged
         coverage = (bw * bh) / (image.shape[0] * image.shape[1])
         if coverage > 0.95:
-            logger.debug("Detected region covers >95%% of image, skipping crop")
+            logger.debug("Detected region covers >95% of image, skipping crop")
             return image, {
                 "method": "contour",
                 "regions_detected": len(rects),

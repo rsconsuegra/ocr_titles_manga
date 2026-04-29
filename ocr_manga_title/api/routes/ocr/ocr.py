@@ -1,5 +1,6 @@
 """OCR playground API routes."""
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -8,17 +9,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
+from ocr_manga_title.api.routes._helpers import (
+    parse_llm_form_config,
+    save_uploaded_image,
+)
 from ocr_manga_title.api.schemas.ocr import (
     ModelDescriptorResponse,
     ModelParamDescriptorResponse,
     OCRExportRequest,
     OCRRunResponse,
+    YamlExportResponse,
 )
 from ocr_manga_title.config import resolve_model_configs
 from ocr_manga_title.db.models import ModelConfig as ModelConfigDB
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
 from ocr_manga_title.services.cache import hash_bytes, run_ocr_cached
-from ocr_manga_title.services.image import save_bytes
 from ocr_manga_title.services.ocr import (
     check_model_availability,
     run_llm_extraction,
@@ -82,25 +87,16 @@ async def run_ocr(
             detail=f"Unknown model: {model_name}",
         )
 
-    parsed_params = json.loads(params)
-
     try:
-        raw = await file.read()
-    except Exception as e:
+        parsed_params = json.loads(params)
+    except json.JSONDecodeError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {e}"
-        ) from e
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in params",
+        )
 
-    tmp_path = None
+    raw, tmp_path = await save_uploaded_image(file)
     try:
-        try:
-            tmp_path = save_bytes(raw)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid image: {e}",
-            ) from e
-
         image_hash = hash_bytes(raw)
         ocr_data = await run_ocr_cached(
             db, image_hash, model_name, tmp_path, parsed_params
@@ -113,15 +109,11 @@ async def run_ocr(
 
         llm_data = None
         if enable_llm and ocr_data.raw_text.strip():
-            llm_cfg: dict | None = None
-            if llm_system_prompt or llm_user_prompt or llm_temperature or llm_max_ocr_chars:
-                llm_cfg = {
-                    "system_prompt": llm_system_prompt,
-                    "user_prompt_template": llm_user_prompt or "{ocr_text}",
-                    "temperature": float(llm_temperature) if llm_temperature else 0.1,
-                    "max_ocr_chars": int(llm_max_ocr_chars) if llm_max_ocr_chars else 0,
-                }
-            llm_data = run_llm_extraction(
+            llm_cfg = parse_llm_form_config(
+                llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars
+            )
+            llm_data = await asyncio.to_thread(
+                run_llm_extraction,
                 ocr_data.raw_text,
                 provider=llm_provider,
                 llm_model=llm_model or None,
@@ -130,11 +122,10 @@ async def run_ocr(
 
         return OCRRunResponse(ocr=ocr_data, llm=llm_data)
     finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
+        Path(tmp_path).unlink(missing_ok=True)
 
 
-@router.post("/export")
+@router.post("/export", response_model=YamlExportResponse)
 async def export_ocr_config(body: OCRExportRequest):
     """Export the configured OCR models as YAML matching ocrs.yaml format."""
     import yaml
@@ -156,4 +147,4 @@ async def export_ocr_config(body: OCRExportRequest):
 
     payload = {"models": models_yaml}
     yaml_str = yaml.dump(payload, default_flow_style=False, sort_keys=False)
-    return {"yaml": yaml_str}
+    return YamlExportResponse(yaml=yaml_str)

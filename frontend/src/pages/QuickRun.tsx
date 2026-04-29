@@ -318,6 +318,9 @@ export default function QuickRun() {
                   confidence={ocr.confidence}
                   rawText={ocr.raw_text}
                   error={ocr.error}
+                  blocks={ocr.blocks}
+                  imageDataUrl={imageDataUrl}
+                  variant={ocr.blocks && ocr.blocks.length > 0 ? "full" : "compact"}
                 />
               ))}
 

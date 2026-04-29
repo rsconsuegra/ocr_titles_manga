@@ -23,6 +23,9 @@ async def save_pipeline_results(
 ) -> None:
     """Persist OCR results, post-processing results, and catalog entry."""
     for ocr_result in pipeline_result.ocr_results:
+        blocks_data = None
+        if ocr_result.blocks:
+            blocks_data = [b.model_dump() for b in ocr_result.blocks]
         ocr_db = OCRResultDB(
             pipeline_run_id=run_id,
             model_name=ocr_result.model_name,
@@ -30,6 +33,7 @@ async def save_pipeline_results(
             confidence=ocr_result.confidence,
             processing_time_ms=ocr_result.processing_time_ms,
             error=ocr_result.error,
+            blocks=blocks_data,
         )
         session.add(ocr_db)
         await session.flush()

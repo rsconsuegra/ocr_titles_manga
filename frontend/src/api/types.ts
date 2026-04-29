@@ -31,6 +31,7 @@ export interface OCRResultDetail {
   confidence: number;
   processing_time_ms: number;
   error: string | null;
+  blocks: TextBlockData[] | null;
   created_at: string;
   post_processing_results: PostProcessingResultDetail[];
 }
@@ -110,12 +111,19 @@ export interface ModelDescriptorResponse {
   enabled: boolean;
 }
 
+export interface TextBlockData {
+  bbox: number[][];
+  text: string;
+  confidence: number;
+}
+
 export interface OCRResultData {
   raw_text: string;
   model_name: string;
   confidence: number;
   processing_time_ms: number;
   error: string | null;
+  blocks: TextBlockData[] | null;
 }
 
 export interface LLMResultData {

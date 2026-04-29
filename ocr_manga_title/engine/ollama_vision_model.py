@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 import time
-from pathlib import Path
 
 from ocr_manga_title.engine.base import BaseOCRModel
+from ocr_manga_title.exceptions import ModelNotAvailableError
 from ocr_manga_title.schemas import ModelConfig, OCRResult
 from ocr_manga_title.services.ollama import chat_completion_sync, is_ollama_configured
 
 logger = logging.getLogger(__name__)
+
+_VISION_CONFIDENCE = 0.8
 
 
 class OllamaVisionModel(BaseOCRModel):
@@ -28,22 +29,11 @@ class OllamaVisionModel(BaseOCRModel):
     def is_available(self) -> bool:
         return is_ollama_configured()
 
-    def _encode_image(self, image_path: str) -> str:
-        with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
-
     def run(self, image_path: str) -> OCRResult:
-        path = Path(image_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Image not found: {image_path}")
+        self._validate_image_path(image_path)
 
         if not self.is_available:
-            return OCRResult(
-                raw_text="",
-                model_name=self.name,
-                confidence=0.0,
-                error="Ollama not configured (set OLLAMA_BASE_URL)",
-            )
+            raise ModelNotAvailableError("Ollama not configured (set OLLAMA_BASE_URL)")
 
         params = self._config.parameters or {}
 
@@ -69,16 +59,10 @@ class OllamaVisionModel(BaseOCRModel):
             return OCRResult(
                 raw_text=raw_text,
                 model_name=self.name,
-                confidence=0.8 if raw_text else 0.0,
+                confidence=_VISION_CONFIDENCE if raw_text else 0.0,
                 processing_time_ms=elapsed_ms,
             )
         except Exception as e:
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.warning("Ollama vision error for %s: %s", image_path, e)
-            return OCRResult(
-                raw_text="",
-                model_name=self.name,
-                confidence=0.0,
-                processing_time_ms=elapsed_ms,
-                error=str(e),
-            )
+            return self._make_error_result(str(e), elapsed_ms)

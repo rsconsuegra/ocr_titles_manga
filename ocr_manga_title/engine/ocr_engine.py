@@ -21,26 +21,15 @@ from ocr_manga_title.schemas import (
     OCRResult,
     PipelineResult,
 )
+from ocr_manga_title.settings import ALLOWED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
 
-def _build_prompt_config(llm_config: dict | None):
+def _build_prompt_config(llm_config: dict | None) -> LLMPromptConfig:
     from ocr_manga_title.schemas import LLMPromptConfig
 
-    if not llm_config:
-        return None
-    system_prompt = llm_config.get("system_prompt", "")
-    if not system_prompt:
-        from prompts import DEFAULT_SYSTEM_PROMPT
-
-        system_prompt = DEFAULT_SYSTEM_PROMPT
-    return LLMPromptConfig(
-        system_prompt=system_prompt,
-        user_prompt_template=llm_config.get("user_prompt_template", "{ocr_text}"),
-        temperature=float(llm_config.get("temperature", 0.1)),
-        max_ocr_chars=int(llm_config.get("max_ocr_chars", 0)),
-    )
+    return LLMPromptConfig.from_dict(llm_config)
 
 
 class OCREngine:
@@ -52,9 +41,7 @@ class OCREngine:
     best extracted title.
     """
 
-    SUPPORTED_FORMATS = frozenset(
-        {".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif", ".bmp"}
-    )
+    SUPPORTED_FORMATS = frozenset(ALLOWED_EXTENSIONS)
 
     def __init__(
         self,
@@ -112,7 +99,7 @@ class OCREngine:
 
             try:
                 model = descriptor.model_cls(config)
-            except Exception as e:
+            except (ImportError, RuntimeError) as e:
                 logger.error("Failed to instantiate model '%s': %s", name, e)
                 skipped.append(f"{name} (init error)")
                 continue
@@ -175,6 +162,7 @@ class OCREngine:
                     pool.submit(self._run_single_model, model, image_path): model
                     for model in self._models
                 }
+                file_not_found = False
                 for future in as_completed(futures):
                     model = futures[future]
                     try:
@@ -182,16 +170,21 @@ class OCREngine:
                         ocr_results.append(result)
                         if result.error is not None:
                             errors.append(f"Model {model.name} failed: {result.error}")
-                            logger.error(
-                                "Model %s failed: %s", model.name, result.error
-                            )
+                            logger.error("Model %s failed: %s", model.name, result.error)
                     except FileNotFoundError:
-                        raise
+                        if not file_not_found:
+                            errors.append(f"Image not found for {model.name}")
+                            logger.error("Image not found: %s", image_path)
+                        file_not_found = True
+                        for f in futures:
+                            f.cancel()
                     except Exception as e:
                         errors.append(f"Model {model.name} failed: {e}")
                         logger.error(
                             "Model %s failed: %s", model.name, e, exc_info=True
                         )
+                if file_not_found:
+                    raise FileNotFoundError(f"Image not found: {image_path}")
 
         return ocr_results, errors
 
@@ -220,7 +213,7 @@ class OCREngine:
 
             try:
                 extracted = self._rule_matcher.augment(extracted, result.raw_text)
-            except Exception as e:
+            except (ValueError, AttributeError) as e:
                 errors.append(f"Rule matching failed for {result.model_name}: {e}")
                 logger.error("Rule matching failed for %s: %s", result.model_name, e)
 
@@ -242,7 +235,7 @@ class OCREngine:
                     if rule_result.code is not None:
                         rule_result.source_model = result.model_name
                         fallback_titles.append(rule_result)
-                except Exception as e:
+                except (ValueError, AttributeError) as e:
                     errors.append(
                         f"Rule matching failed for {result.model_name}: {e}"
                     )
@@ -306,6 +299,21 @@ class OCREngine:
                 logger.warning("Preprocessing produced no output, using original image")
 
         ocr_results, errors = self._run_models(ocr_image_path)
+
+        if preprocess_result and preprocess_result.steps:
+            from ocr_manga_title.preprocess.transform import CoordinateTransform
+            step_meta = [
+                (s.step_name, s.metadata)
+                for s in preprocess_result.steps
+                if s.enabled and s.success and s.metadata
+            ]
+            if step_meta:
+                transform = CoordinateTransform.from_pipeline(step_meta)
+                for ocr_result in ocr_results:
+                    if ocr_result.blocks:
+                        for block in ocr_result.blocks:
+                            block.bbox = transform.inverse_map_bbox(block.bbox)
+
         extracted_titles = (
             self._extract_titles(ocr_results, errors) if enable_llm else []
         )

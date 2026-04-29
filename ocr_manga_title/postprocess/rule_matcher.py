@@ -6,6 +6,9 @@ import unicodedata
 from ocr_manga_title.schemas import ExtractedTitle
 
 
+_ISBN_MATCH_CONFIDENCE = 0.9
+
+
 class RuleMatcher:
     """Regex-driven extractor for ISBN-10 / ISBN-13 codes and title normalizer."""
 
@@ -32,7 +35,7 @@ class RuleMatcher:
             if self._validate_isbn13(normalized):
                 return ExtractedTitle(
                     code=normalized,
-                    confidence=0.9,
+                    confidence=_ISBN_MATCH_CONFIDENCE,
                     source_method="rules",
                 )
 
@@ -42,7 +45,7 @@ class RuleMatcher:
             if self._validate_isbn10(normalized):
                 return ExtractedTitle(
                     code=normalized,
-                    confidence=0.9,
+                    confidence=_ISBN_MATCH_CONFIDENCE,
                     source_method="rules",
                 )
 

@@ -1,6 +1,6 @@
 """Settings API routes — credentials management and Ollama configuration."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,14 @@ from ocr_manga_title.services.ollama import is_ollama_configured, list_models, l
 from ocr_manga_title.settings import OPENROUTER_API_KEY
 
 router = APIRouter()
+
+_ALLOWED_SERVICES = {"openrouter", "ollama"}
+
+
+async def _validate_service(service: str = Path()) -> str:
+    if service not in _ALLOWED_SERVICES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown service: {service}")
+    return service
 
 
 class OllamaUrlRequest(BaseModel):
@@ -60,6 +68,10 @@ class ApiKeyResponse(BaseModel):
 class ValidateResponse(BaseModel):
     valid: bool
     message: str
+
+
+class CredentialDeleteResponse(BaseModel):
+    deactivated: bool
 
 
 async def _fetch_model_lists() -> tuple[list[dict], list[dict]]:
@@ -142,14 +154,14 @@ async def ping_ollama_endpoint(req: OllamaUrlRequest):
 
 
 @router.get("/credentials/{service}", response_model=ApiKeyResponse)
-async def get_credential(service: str, db: AsyncSession = Depends(get_db)):
+async def get_credential(service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)):
     env_default = OPENROUTER_API_KEY if service == "openrouter" else ""
     info = await cred.get_credential_info(db, service, env_default)
     return ApiKeyResponse(**info)
 
 
 @router.put("/credentials/{service}", response_model=ValidateResponse)
-async def update_credential(service: str, req: ApiKeyRequest, db: AsyncSession = Depends(get_db)):
+async def update_credential(req: ApiKeyRequest, service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)):
     if service == "openrouter":
         valid, msg = await cred.validate_openrouter_key(req.api_key)
         if not valid:
@@ -160,15 +172,15 @@ async def update_credential(service: str, req: ApiKeyRequest, db: AsyncSession =
     return ValidateResponse(valid=True, message="Key saved successfully")
 
 
-@router.delete("/credentials/{service}")
-async def delete_credential(service: str, db: AsyncSession = Depends(get_db)):
+@router.delete("/credentials/{service}", response_model=CredentialDeleteResponse)
+async def delete_credential(service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)):
     deactivated = await cred.deactivate_key(db, service)
     await db.commit()
-    return {"deactivated": deactivated}
+    return CredentialDeleteResponse(deactivated=deactivated)
 
 
 @router.post("/credentials/{service}/validate", response_model=ValidateResponse)
-async def validate_credential(service: str, req: ApiKeyRequest):
+async def validate_credential(req: ApiKeyRequest, service: str = Depends(_validate_service)):
     if service == "openrouter":
         valid, msg = await cred.validate_openrouter_key(req.api_key)
         return ValidateResponse(valid=valid, message=msg)

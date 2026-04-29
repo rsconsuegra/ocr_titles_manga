@@ -44,6 +44,14 @@ class OCRRunRequest(BaseModel):
     enable_llm: bool = False
 
 
+class TextBlockData(BaseModel):
+    """A single detected text region with bounding box."""
+
+    bbox: list[list[float]]
+    text: str
+    confidence: float
+
+
 class OCRResultData(BaseModel):
     """OCR output from a single model."""
 
@@ -52,6 +60,7 @@ class OCRResultData(BaseModel):
     confidence: float = 0.0
     processing_time_ms: int = 0
     error: str | None = None
+    blocks: list[TextBlockData] | None = None
 
 
 class LLMResultData(BaseModel):
@@ -96,3 +105,9 @@ class QuickRunResponse(BaseModel):
     ocr_results: list[OCRResultData] = []
     llm: LLMResultData | None = None
     total_processing_time_ms: int = 0
+
+
+class YamlExportResponse(BaseModel):
+    """Response for YAML config export endpoints."""
+
+    yaml: str

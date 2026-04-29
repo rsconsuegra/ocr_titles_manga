@@ -54,7 +54,6 @@ class LLMExtractor:
         prompt_config: LLMPromptConfig | None = None,
     ):
         self._provider = provider
-        self._openrouter_config = ollama_config
         self._ollama_config = ollama_config
         self._prompt_config = prompt_config
 
@@ -163,6 +162,8 @@ class LLMExtractor:
     def _extract_ollama(
         self, raw_text: str, model: str | None = None
     ) -> ExtractedTitle:
+        import httpx as _httpx
+
         from ocr_manga_title.services.ollama import chat_completion_sync
 
         if not self._ollama_config:
@@ -188,7 +189,7 @@ class LLMExtractor:
                 temperature=temperature,
                 timeout=self._ollama_config.timeout,
             )
-        except Exception as e:
+        except (_httpx.HTTPError, RuntimeError) as e:
             raise LLMExtractionError(f"Ollama API error: {e}") from e
 
         elapsed_ms = int((time.monotonic() - start) * 1000)

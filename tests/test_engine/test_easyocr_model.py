@@ -50,8 +50,9 @@ class TestEasyOCRModelRun:
         model = EasyOCRModel(_make_config())
         assert model.name == "easyocr"
 
+    @patch("ocr_manga_title.engine.easyocr_model.os.makedirs")
     @patch("ocr_manga_title.engine.easyocr_model.importlib.util.find_spec")
-    def test_run_returns_ocr_result_with_text(self, mock_find, mock_easyocr):
+    def test_run_returns_ocr_result_with_text(self, mock_find, mock_makedirs, mock_easyocr):
         mock_find.return_value = MagicMock()
         _, mock_reader = mock_easyocr
         mock_reader.readtext.return_value = [
@@ -67,8 +68,9 @@ class TestEasyOCRModelRun:
         assert result.model_name == "easyocr"
         assert result.processing_time_ms >= 0
 
+    @patch("ocr_manga_title.engine.easyocr_model.os.makedirs")
     @patch("ocr_manga_title.engine.easyocr_model.importlib.util.find_spec")
-    def test_run_returns_empty_on_error(self, mock_find, mock_easyocr):
+    def test_run_returns_empty_on_error(self, mock_find, mock_makedirs, mock_easyocr):
         mock_find.return_value = MagicMock()
         _, mock_reader = mock_easyocr
         mock_reader.readtext.side_effect = RuntimeError("corrupt image")
@@ -80,8 +82,9 @@ class TestEasyOCRModelRun:
         assert result.confidence == 0.0
         assert "corrupt image" in result.error
 
+    @patch("ocr_manga_title.engine.easyocr_model.os.makedirs")
     @patch("ocr_manga_title.engine.easyocr_model.importlib.util.find_spec")
-    def test_run_returns_empty_for_no_results(self, mock_find, mock_easyocr):
+    def test_run_returns_empty_for_no_results(self, mock_find, mock_makedirs, mock_easyocr):
         mock_find.return_value = MagicMock()
         _, mock_reader = mock_easyocr
         mock_reader.readtext.return_value = []
@@ -92,8 +95,9 @@ class TestEasyOCRModelRun:
         assert result.raw_text == ""
         assert result.confidence == 0.0
 
+    @patch("ocr_manga_title.engine.easyocr_model.os.makedirs")
     @patch("ocr_manga_title.engine.easyocr_model.importlib.util.find_spec")
-    def test_lazy_load_creates_reader_once(self, mock_find, mock_easyocr):
+    def test_lazy_load_creates_reader_once(self, mock_find, mock_makedirs, mock_easyocr):
         mock_find.return_value = MagicMock()
         mock_cls, mock_reader = mock_easyocr
         mock_reader.readtext.return_value = []
@@ -104,8 +108,9 @@ class TestEasyOCRModelRun:
 
         assert mock_cls.call_count == 1
 
+    @patch("ocr_manga_title.engine.easyocr_model.os.makedirs")
     @patch("ocr_manga_title.engine.easyocr_model.importlib.util.find_spec")
-    def test_reader_uses_configured_languages_and_gpu(self, mock_find, mock_easyocr):
+    def test_reader_uses_configured_languages_and_gpu(self, mock_find, mock_makedirs, mock_easyocr):
         mock_find.return_value = MagicMock()
         mock_cls, mock_reader = mock_easyocr
         mock_reader.readtext.return_value = []
@@ -117,8 +122,9 @@ class TestEasyOCRModelRun:
         assert args[0] == ["ja", "en"]
         assert kwargs["gpu"] is True
 
+    @patch("ocr_manga_title.engine.easyocr_model.os.makedirs")
     @patch("ocr_manga_title.engine.easyocr_model.importlib.util.find_spec")
-    def test_multiple_results_averaged(self, mock_find, mock_easyocr):
+    def test_multiple_results_averaged(self, mock_find, mock_makedirs, mock_easyocr):
         mock_find.return_value = MagicMock()
         _, mock_reader = mock_easyocr
         mock_reader.readtext.return_value = [

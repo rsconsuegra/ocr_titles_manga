@@ -8,6 +8,7 @@ access and invalidates the lru_cache on writes.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -60,6 +61,7 @@ def write_ollama_base_url(new_url: str) -> None:
 
     Writes a clean TOML file by re-serialising all sections.
     Invalidates the ``load_config`` lru_cache so the next read picks up the change.
+    Also invalidates the Ollama model cache so the next fetch hits the new URL.
     """
     with _lock:
         data = read_toml()
@@ -68,6 +70,8 @@ def write_ollama_base_url(new_url: str) -> None:
         data["ollama"]["base_url"] = new_url
         _write_toml(data)
         _invalidate_config_cache()
+        from ocr_manga_title.services.ollama import invalidate_cache
+        invalidate_cache()
 
 
 def write_ollama_models(
@@ -93,8 +97,10 @@ def write_ollama_models(
 def _write_toml(data: dict) -> None:
     p = _toml_path()
     lines = _serialise_toml(data)
-    p.write_text(lines + "\n")
-    logger.info("Updated %s with new ollama.base_url", p)
+    tmp = p.with_suffix(".toml.tmp")
+    tmp.write_text(lines + "\n")
+    os.replace(str(tmp), str(p))
+    logger.info("Updated %s", p)
 
 
 def _serialise_toml(data: dict) -> str:
@@ -115,16 +121,17 @@ def _serialise_toml(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _toml_value(value) -> str:
+def _toml_value(value: str | bool | int | float) -> str:
     if isinstance(value, str):
-        return f'"{value}"'
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
+        return f'"{escaped}"'
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
         return repr(value)
     if isinstance(value, int):
         return str(value)
-    return repr(value)
+    raise TypeError(f"Unsupported TOML value type: {type(value).__name__}")
 
 
 def _invalidate_config_cache() -> None:

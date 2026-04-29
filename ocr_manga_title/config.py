@@ -67,7 +67,7 @@ def load_config(config_path: str | Path = CONFIG_PATH) -> AppConfig:
 
     try:
         return AppConfig(**data)
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         raise ConfigurationError(str(e), file_path=str(config_path)) from e
 
 
@@ -124,7 +124,7 @@ def load_ocr_config(
 
         try:
             models[name] = ModelConfig(**{"__key__": name, **model_data})
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             raise ConfigurationError(str(e), file_path=str(config_path)) from e
 
     return models
@@ -161,7 +161,7 @@ def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> 
 
     try:
         PreProcessConfig(**data["preprocessing"])
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         logger.warning("Invalid preprocess config: %s", e)
         return disabled
 

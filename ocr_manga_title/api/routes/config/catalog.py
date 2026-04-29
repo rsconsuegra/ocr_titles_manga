@@ -1,12 +1,13 @@
 import csv
 import io
 import uuid
-from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func as sa_func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from ocr_manga_title.schemas import utcnow
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.schemas.catalog import (
@@ -60,28 +61,22 @@ async def list_catalog(
 
 @router.get("/export")
 async def export_catalog(db: AsyncSession = Depends(get_db)):
-    """Export all catalog entries as a CSV download."""
-    stmt = select(CatalogEntry).order_by(CatalogEntry.created_at.desc())
-    result = await db.execute(stmt)
-    entries = result.scalars().all()
+    """Export all catalog entries as a streaming CSV download."""
+    CHUNK_SIZE = 500
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(
-        [
-            "id",
-            "title_en",
-            "title_ja",
-            "code",
-            "status",
-            "confidence",
-            "source_run_id",
-            "created_at",
-            "updated_at",
-        ]
-    )
-    for entry in entries:
-        writer.writerow(
+    def _csv_header() -> str:
+        buf = io.StringIO()
+        csv.writer(buf).writerow(
+            [
+                "id", "title_en", "title_ja", "code", "status",
+                "confidence", "source_run_id", "created_at", "updated_at",
+            ]
+        )
+        return buf.getvalue()
+
+    def _csv_row(entry) -> str:
+        buf = io.StringIO()
+        csv.writer(buf).writerow(
             [
                 entry.id,
                 entry.title_en,
@@ -94,10 +89,28 @@ async def export_catalog(db: AsyncSession = Depends(get_db)):
                 entry.updated_at.isoformat() if entry.updated_at else "",
             ]
         )
+        return buf.getvalue()
 
-    output.seek(0)
+    async def _generate():
+        yield _csv_header()
+        offset = 0
+        while True:
+            stmt = (
+                select(CatalogEntry)
+                .order_by(CatalogEntry.created_at.desc())
+                .offset(offset)
+                .limit(CHUNK_SIZE)
+            )
+            result = await db.execute(stmt)
+            chunk = result.scalars().all()
+            if not chunk:
+                break
+            for entry in chunk:
+                yield _csv_row(entry)
+            offset += CHUNK_SIZE
+
     return StreamingResponse(
-        iter([output.getvalue()]),
+        _generate(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=catalog_export.csv"},
     )
@@ -145,7 +158,7 @@ async def update_catalog(
         updates["code"] = body.code
 
     if updates:
-        updates["updated_at"] = datetime.now(UTC)
+        updates["updated_at"] = utcnow()
         updated = await update_catalog_entry(session=db, entry_id=entry_id, **updates)
         return CatalogEntryResponse.model_validate(updated)
     return CatalogEntryResponse.model_validate(entry)

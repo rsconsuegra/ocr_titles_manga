@@ -34,7 +34,7 @@ async def test_quick_run_with_tesseract(client):
         confidence=0.88,
         processing_time_ms=200,
     )]
-    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)):
+    with patch("ocr_manga_title.api.routes.pipeline.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)):
         response = await client.post(
             "/api/v1/run/quick",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},
@@ -57,8 +57,8 @@ async def test_quick_run_with_preprocessing(client):
         confidence=0.75,
         processing_time_ms=100,
     )]
-    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)), \
-         patch("ocr_manga_title.api.routes.run.run_preprocessing_cached", new=AsyncMock(return_value="/tmp/test.png")):
+    with patch("ocr_manga_title.api.routes.pipeline.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)), \
+         patch("ocr_manga_title.api.routes.pipeline.run.run_preprocessing_cached", new=AsyncMock(return_value="/tmp/test.png")):
         response = await client.post(
             "/api/v1/run/quick",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},
@@ -90,8 +90,8 @@ async def test_quick_run_with_llm(client):
         source_method="llm",
     )
 
-    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)), \
-         patch("ocr_manga_title.api.routes.run.run_llm_extraction", return_value=mock_llm):
+    with patch("ocr_manga_title.api.routes.pipeline.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)), \
+         patch("ocr_manga_title.api.routes.pipeline.run.run_llm_extraction", return_value=mock_llm):
         response = await client.post(
             "/api/v1/run/quick",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},
@@ -112,7 +112,7 @@ async def test_quick_run_model_not_available(client):
         model_name="paddle",
         error="Model not available",
     )]
-    with patch("ocr_manga_title.api.routes.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)):
+    with patch("ocr_manga_title.api.routes.pipeline.run.run_all_models_cached", new=AsyncMock(return_value=mock_results)):
         response = await client.post(
             "/api/v1/run/quick",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},

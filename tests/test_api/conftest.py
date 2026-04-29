@@ -10,8 +10,7 @@ from ocr_manga_title.api.app import create_app
 @pytest.fixture
 async def client(db_engine, monkeypatch, tmp_path):
     from ocr_manga_title.api import dependencies as deps_module
-    from ocr_manga_title.api.routes import batches as batches_module
-    from ocr_manga_title.api.routes import inputs as inputs_module
+    from ocr_manga_title.api.routes import _helpers as helpers_module
     from ocr_manga_title.db import session as session_module
 
     test_factory = async_sessionmaker(
@@ -19,8 +18,7 @@ async def client(db_engine, monkeypatch, tmp_path):
     )
     monkeypatch.setattr(session_module, "async_session_factory", test_factory)
     monkeypatch.setattr(deps_module, "async_session_factory", test_factory)
-    monkeypatch.setattr(inputs_module, "UPLOAD_DIR", tmp_path / "uploads")
-    monkeypatch.setattr(batches_module, "UPLOAD_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(helpers_module, "UPLOAD_DIR_PATH", tmp_path / "uploads")
 
     app = create_app()
     transport = ASGITransport(app=app)

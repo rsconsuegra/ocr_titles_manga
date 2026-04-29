@@ -44,7 +44,7 @@ class TestGLMOCRModelRun:
         with pytest.raises(FileNotFoundError):
             model.run("/nonexistent_image.png")
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_run_sends_base64_image(self, mock_openai_cls, blank_image):
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -69,7 +69,7 @@ class TestGLMOCRModelRun:
         image_part = [c for c in content if c["type"] == "image_url"][0]
         assert "data:image/png;base64," in image_part["image_url"]["url"]
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_run_handles_api_error(self, mock_openai_cls, blank_image):
         mock_client = MagicMock()
         mock_client.chat.completions.create.side_effect = Exception("API timeout")
@@ -84,7 +84,7 @@ class TestGLMOCRModelRun:
         assert result.confidence == 0.0
         assert "API timeout" in result.error
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_run_handles_rate_limit(self, mock_openai_cls, blank_image):
         import openai
 
@@ -102,7 +102,7 @@ class TestGLMOCRModelRun:
         assert result.raw_text == ""
         assert result.error is not None
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_configurable_model_and_prompt(self, mock_openai_cls, blank_image):
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -127,7 +127,7 @@ class TestGLMOCRModelRun:
         ]
         assert text_parts[0]["text"] == "Read this"
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_uses_configured_endpoint(self, mock_openai_cls, blank_image):
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -148,7 +148,7 @@ class TestGLMOCRModelRun:
             base_url="https://custom.api/v1", api_key="sk-test"
         )
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_empty_response_gives_zero_confidence(self, mock_openai_cls, blank_image):
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -165,7 +165,7 @@ class TestGLMOCRModelRun:
         assert result.raw_text == ""
         assert result.confidence == 0.0
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_handles_jpg_mime_type(self, mock_openai_cls, tmp_path):
         from PIL import Image
 
@@ -190,7 +190,7 @@ class TestGLMOCRModelRun:
         image_part = [c for c in content if c["type"] == "image_url"][0]
         assert "data:image/jpeg;base64," in image_part["image_url"]["url"]
 
-    @patch("ocr_manga_title.engine.glm_ocr_model.openai.OpenAI")
+    @patch("openai.OpenAI")
     def test_client_cached_across_calls(self, mock_openai_cls, blank_image):
         mock_client = MagicMock()
         mock_response = MagicMock()

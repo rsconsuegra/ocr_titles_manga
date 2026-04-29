@@ -71,7 +71,7 @@ async def test_run_ocr_tesseract_success(client):
         confidence=0.92,
         processing_time_ms=150,
     )
-    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
+    with patch("ocr_manga_title.api.routes.ocr.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
         response = await client.post(
             "/api/v1/ocr/run",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},
@@ -99,8 +99,8 @@ async def test_run_ocr_with_llm(client):
         source_method="llm",
     )
 
-    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_ocr)), \
-         patch("ocr_manga_title.api.routes.ocr.run_llm_extraction", return_value=mock_llm):
+    with patch("ocr_manga_title.api.routes.ocr.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_ocr)), \
+         patch("ocr_manga_title.api.routes.ocr.ocr.run_llm_extraction", return_value=mock_llm):
         response = await client.post(
             "/api/v1/ocr/run",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},
@@ -122,7 +122,7 @@ async def test_run_ocr_model_not_available(client):
         model_name="paddle",
         error="Model not available",
     )
-    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
+    with patch("ocr_manga_title.api.routes.ocr.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
         response = await client.post(
             "/api/v1/ocr/run",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},
@@ -140,7 +140,7 @@ async def test_run_ocr_model_run_error(client):
         confidence=0.0,
         processing_time_ms=50,
     )
-    with patch("ocr_manga_title.api.routes.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
+    with patch("ocr_manga_title.api.routes.ocr.ocr.run_ocr_cached", new=AsyncMock(return_value=mock_result)):
         response = await client.post(
             "/api/v1/ocr/run",
             files={"file": ("image.png", _make_png_bytes(), "image/png")},

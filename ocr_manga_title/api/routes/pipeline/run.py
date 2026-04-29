@@ -1,5 +1,6 @@
 """Quick run API route — stateless full pipeline execution with image caching."""
 
+import asyncio
 import json
 import time
 import uuid
@@ -9,16 +10,19 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
+from ocr_manga_title.api.routes._helpers import (
+    parse_llm_form_config,
+    save_uploaded_image,
+)
 from ocr_manga_title.api.schemas.ocr import QuickRunResponse
 from ocr_manga_title.services.cache import (
     hash_bytes,
     run_all_models_cached,
     run_preprocessing_cached,
 )
-from ocr_manga_title.services.image import save_bytes
 from ocr_manga_title.services.ocr import run_llm_extraction
 
-SYNC_BLOCKED_METHODS = {"edsr"}
+from ocr_manga_title.preprocess.registry import SYNC_BLOCKED_METHODS
 
 router = APIRouter()
 
@@ -59,18 +63,24 @@ async def quick_run(
     profile_id: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    pp_steps = json.loads(preprocess_steps)
-    ocr_mods = json.loads(ocr_models)
+    try:
+        pp_steps = json.loads(preprocess_steps)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in preprocess_steps",
+        )
+    try:
+        ocr_mods = json.loads(ocr_models)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in ocr_models",
+        )
     effective_llm_provider = llm_provider
-
-    llm_cfg: dict | None = None
-    if llm_system_prompt or llm_user_prompt or llm_temperature or llm_max_ocr_chars:
-        llm_cfg = {
-            "system_prompt": llm_system_prompt,
-            "user_prompt_template": llm_user_prompt or "{ocr_text}",
-            "temperature": float(llm_temperature) if llm_temperature else 0.1,
-            "max_ocr_chars": int(llm_max_ocr_chars) if llm_max_ocr_chars else 0,
-        }
+    llm_cfg = parse_llm_form_config(
+        llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars
+    )
 
     if profile_id:
         from ocr_manga_title.db.crud import get_profile
@@ -96,29 +106,15 @@ async def quick_run(
             None,
             None,
         )
-        if not llm_cfg and hasattr(profile, "llm_config") and profile.llm_config:
+        if not llm_cfg and profile.llm_config:
             llm_cfg = profile.llm_config
 
+    raw, tmp_path = await save_uploaded_image(file)
     try:
-        raw = await file.read()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid image: {e}"
-        ) from e
-
-    tmp_path: str | None = None
-    try:
-        try:
-            tmp_path = save_bytes(raw)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid image: {e}",
-            ) from e
-
         image_hash = hash_bytes(raw)
 
         ocr_image_path = tmp_path
+        step_metadata = None
         if pp_steps:
             upscale_cfg = pp_steps.get("upscale", {})
             if isinstance(upscale_cfg, dict) and upscale_cfg.get("method") in SYNC_BLOCKED_METHODS:
@@ -130,7 +126,7 @@ async def quick_run(
                     ),
                 )
             try:
-                pp_path = await run_preprocessing_cached(db, raw, pp_steps)
+                pp_path, step_metadata = await run_preprocessing_cached(db, raw, pp_steps)
                 ocr_image_path = pp_path
             except TimeoutError as e:
                 raise HTTPException(
@@ -148,6 +144,14 @@ async def quick_run(
             db, image_hash, ocr_image_path, ocr_mods
         )
 
+        if step_metadata:
+            from ocr_manga_title.preprocess.transform import CoordinateTransform
+            transform = CoordinateTransform.from_pipeline(step_metadata)
+            for ocr_result in ocr_results:
+                if ocr_result.blocks:
+                    for block in ocr_result.blocks:
+                        block.bbox = transform.inverse_map_bbox(block.bbox)
+
         llm_data = None
         if enable_llm:
             best = next(
@@ -161,7 +165,8 @@ async def quick_run(
                 None,
             )
             if best:
-                llm_data = run_llm_extraction(
+                llm_data = await asyncio.to_thread(
+                    run_llm_extraction,
                     best.raw_text,
                     provider=effective_llm_provider,
                     llm_model=llm_model or None,
@@ -175,5 +180,4 @@ async def quick_run(
             total_processing_time_ms=total_ms,
         )
     finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
+        Path(tmp_path).unlink(missing_ok=True)

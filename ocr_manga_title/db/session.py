@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from ocr_manga_title.settings import (
     DATABASE_URL,
@@ -42,6 +42,6 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-def get_engine():
+def get_engine() -> AsyncEngine:
     """Return the shared async database engine."""
     return engine

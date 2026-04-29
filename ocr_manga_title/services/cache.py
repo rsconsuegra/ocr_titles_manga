@@ -14,7 +14,7 @@ import json
 import logging
 import shutil
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.schemas.ocr import OCRResultData
+from ocr_manga_title.schemas import utcnow
 from ocr_manga_title.services.image import decode_bytes
 from ocr_manga_title.services.preprocess import run_preprocessing_pipeline_from_array
 from ocr_manga_title.services.ocr import run_all_enabled_models, run_single_model
@@ -46,15 +47,15 @@ def _cache_dir() -> Path:
 
 
 def _expiry() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None) + timedelta(days=CACHE_TTL_DAYS)
+    return utcnow() + timedelta(days=CACHE_TTL_DAYS)
 
 
 async def get_preprocessed(
-    session: AsyncSession, image_hash: str, config_hash: str
-) -> str | None:
+    session: AsyncSession, image_hash: str, config_hash: str,
+) -> tuple[str, list[tuple[str, dict]] | None] | None:
     from ocr_manga_title.db.models import ImageCache
 
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = utcnow()
     stmt = (
         delete(ImageCache)
         .where(
@@ -76,7 +77,7 @@ async def get_preprocessed(
     if row is None:
         return None
     if row.result_path and Path(row.result_path).exists():
-        return row.result_path
+        return (row.result_path, row.result_data)
     await session.execute(delete(ImageCache).where(ImageCache.id == row.id))
     await session.flush()
     return None
@@ -87,7 +88,8 @@ async def put_preprocessed(
     image_hash: str,
     config_hash: str,
     source_path: str,
-) -> str:
+    step_metadata: list[tuple[str, dict]] | None = None,
+) -> tuple[str, list[tuple[str, dict]] | None]:
     from ocr_manga_title.db.models import ImageCache
 
     cache_dir = _cache_dir()
@@ -103,16 +105,16 @@ async def put_preprocessed(
         config_hash=config_hash,
         cache_type="preprocess",
         result_path=cached_path,
-        result_data=None,
+        result_data=step_metadata,
         expires_at=expires,
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["image_hash", "config_hash", "cache_type"],
-        set_={"result_path": cached_path, "expires_at": expires},
+        set_={"result_path": cached_path, "result_data": step_metadata, "expires_at": expires},
     )
     await session.execute(stmt)
     await session.flush()
-    return cached_path
+    return cached_path, step_metadata
 
 
 async def get_ocr_result(
@@ -120,7 +122,7 @@ async def get_ocr_result(
 ) -> OCRResultData | None:
     from ocr_manga_title.db.models import ImageCache
 
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = utcnow()
     stmt = (
         delete(ImageCache)
         .where(
@@ -174,7 +176,7 @@ async def put_ocr_result(
 async def evict_expired(session: AsyncSession) -> int:
     from ocr_manga_title.db.models import ImageCache
 
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = utcnow()
     stmt = select(ImageCache.result_path).where(
         ImageCache.expires_at < now,
         ImageCache.result_path.isnot(None),
@@ -202,7 +204,7 @@ async def run_preprocessing_cached(
     session: AsyncSession,
     raw: bytes,
     steps_config: dict,
-) -> str:
+) -> tuple[str, list[tuple[str, dict]] | None]:
     image_hash = hash_bytes(raw)
     config_hash = hash_config(steps_config)
 
@@ -212,13 +214,15 @@ async def run_preprocessing_cached(
         return cached
 
     image_array = decode_bytes(raw)
-    result_path = await asyncio.to_thread(
+    result_path, step_metadata = await asyncio.to_thread(
         run_preprocessing_pipeline_from_array, image_array, steps_config
     )
 
-    cached_path = await put_preprocessed(session, image_hash, config_hash, result_path)
+    cached_result = await put_preprocessed(
+        session, image_hash, config_hash, result_path, step_metadata,
+    )
     logger.info("Preprocessing cache miss: %s (cached)", image_hash[:12])
-    return cached_path
+    return cached_result
 
 
 async def run_ocr_cached(
@@ -274,7 +278,7 @@ async def run_all_models_cached(
             uncached_models.append((name, override))
 
     if uncached_models:
-        ocr_results = run_all_enabled_models(image_path, ocr_config)
+        ocr_results = await asyncio.to_thread(run_all_enabled_models, image_path, ocr_config)
 
         for ocr_result in ocr_results:
             if not ocr_result.error:
