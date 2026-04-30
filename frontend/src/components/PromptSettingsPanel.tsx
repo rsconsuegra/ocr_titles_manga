@@ -61,28 +61,15 @@ export default function PromptSettingsPanel({
       </div>
       <div>
         <label htmlFor={`${uid}-usr`} className="mb-1 block text-xs text-muted">User Prompt Template</label>
-        {size === "md" ? (
-          <>
-            <textarea
-              id={`${uid}-usr`}
-              value={userPrompt}
-              onChange={(e) => onUserPromptChange(e.target.value)}
-              placeholder="{ocr_text}"
-              rows={2}
-              className={inputClass}
-            />
-            <p className="mt-1 text-xs text-muted">Available: {"{ocr_text}"}</p>
-          </>
-        ) : (
-          <input
-            id={`${uid}-usr`}
-            type="text"
-            value={userPrompt}
-            onChange={(e) => onUserPromptChange(e.target.value)}
-            placeholder="{ocr_text}"
-            className={inputClass}
-          />
-        )}
+        <textarea
+          id={`${uid}-usr`}
+          value={userPrompt}
+          onChange={(e) => onUserPromptChange(e.target.value)}
+          placeholder="{ocr_text}"
+          rows={size === "md" ? 3 : 2}
+          className={inputClass}
+        />
+        <p className="mt-1 text-xs text-muted">Available: {"{ocr_text}"}</p>
       </div>
       <div>
         <label htmlFor={`${uid}-temp`} className="mb-1 block text-xs text-muted">Temperature</label>
