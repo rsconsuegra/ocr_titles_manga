@@ -571,6 +571,14 @@ async def get_profile(
     return result.scalar_one_or_none()
 
 
+async def get_profile_by_name(
+    session: AsyncSession, name: str
+) -> PipelineProfile | None:
+    stmt = select(PipelineProfile).where(PipelineProfile.name == name)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def get_default_profile(session: AsyncSession) -> PipelineProfile | None:
     stmt = select(PipelineProfile).where(PipelineProfile.is_default.is_(True))
     result = await session.execute(stmt)

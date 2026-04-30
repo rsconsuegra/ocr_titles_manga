@@ -1,5 +1,6 @@
 export { createBatch, getBatchDetail, listBatches, triggerBatch } from "./batch";
 export { getCatalogExportUrl, listCatalog, updateCatalogEntry } from "./catalog";
+export { getLLMProviders, getOpenRouterModels } from "./llm";
 export { exportOCRConfig, getOCRModels, runOCR } from "./ocr";
 export {
   getDashboardStats,
@@ -13,13 +14,15 @@ export { exportPipeline, getPreprocessSteps, previewPipeline, previewStep } from
 export {
   createProfile,
   deleteProfile,
+  exportProfile,
   getProfile,
+  importProfile,
   listProfiles,
   setDefaultProfile,
   updateProfile,
+  validateProfileImport,
 } from "./profiles";
 export { quickRun } from "./run";
-export { getLLMProviders } from "./llm";
 export {
   deleteCredential,
   getCredential,
@@ -37,6 +40,7 @@ export type {
   ModelDescriptorResponse,
   OCRResultData,
   OCRRunResponse,
+  OpenRouterModel,
   PaginatedResponse,
   ParamDescriptor,
   PipelineRunResponse,
@@ -45,8 +49,11 @@ export type {
   PreviewPipelineResponse,
   PreviewStepResponse,
   ProfileCreateRequest,
+  ProfileExportFile,
+  ProfileImportResult,
   ProfileResponse,
   ProfileUpdateRequest,
+  ProfileValidationWarning,
   QuickRunResponse,
   RunDetailResponse,
   StepDescriptor,

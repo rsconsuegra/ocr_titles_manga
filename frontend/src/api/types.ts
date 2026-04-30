@@ -165,6 +165,13 @@ export interface LLMPromptConfig {
   user_prompt_template?: string;
   temperature?: number;
   max_ocr_chars?: number;
+  llm_model?: string;
+  reasoning_enabled?: boolean;
+}
+
+export interface OpenRouterModel {
+  id: string;
+  label: string;
 }
 
 export interface ProfileResponse {
@@ -260,4 +267,21 @@ export interface CredentialInfo {
 export interface CredentialValidateResponse {
   valid: boolean;
   message: string;
+}
+
+export interface ProfileExportFile {
+  version: number;
+  exported_at: string;
+  profile: ProfileCreateRequest;
+}
+
+export interface ProfileValidationWarning {
+  field: string;
+  message: string;
+}
+
+export interface ProfileImportResult {
+  profile: ProfileResponse | null;
+  warnings: ProfileValidationWarning[];
+  errors: ProfileValidationWarning[];
 }

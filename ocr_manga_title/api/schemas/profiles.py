@@ -45,3 +45,20 @@ class ProfileResponse(BaseModel):
     is_default: bool
     created_at: datetime
     updated_at: datetime | None
+
+
+class ProfileExportFile(BaseModel):
+    version: int = 1
+    exported_at: datetime
+    profile: ProfileCreateRequest
+
+
+class ProfileValidationWarning(BaseModel):
+    field: str
+    message: str
+
+
+class ProfileImportResult(BaseModel):
+    profile: ProfileResponse | None = None
+    warnings: list[ProfileValidationWarning] = []
+    errors: list[ProfileValidationWarning] = []
