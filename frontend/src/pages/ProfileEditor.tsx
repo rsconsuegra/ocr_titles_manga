@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { getOpenRouterModels } from "../api/llm";
 import { getOCRModels } from "../api/ocr";
 import { getPreprocessSteps } from "../api/preprocess";
 import {
@@ -8,7 +9,7 @@ import {
   getProfile,
   updateProfile,
 } from "../api/profiles";
-import type { ModelDescriptorResponse, StepDescriptor } from "../api/types";
+import type { ModelDescriptorResponse, OpenRouterModel, StepDescriptor } from "../api/types";
 import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import LlmConfigSection from "../components/LlmConfigSection";
 import OcrModelCard from "../components/OcrModelCard";
@@ -32,6 +33,7 @@ export default function ProfileEditor() {
   const [ollamaDefaultModel, setOllamaDefaultModel] = useState("");
   const promptState = useLlmPromptState({ userPromptTemplate: "{ocr_text}" });
   const { llmModels: ollamaModels, status: ollamaStatus } = useOllamaModels();
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
 
   const [preprocessSteps, setPreprocessSteps] = useState<StepDescriptor[]>([]);
   const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>({});
@@ -46,10 +48,11 @@ export default function ProfileEditor() {
   const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getPreprocessSteps(), getOCRModels()])
-      .then(([steps, models]) => {
+    Promise.all([getPreprocessSteps(), getOCRModels(), getOpenRouterModels()])
+      .then(([steps, models, orModels]) => {
         setPreprocessSteps(steps);
         setOcrModels(models);
+        setOpenRouterModels(orModels);
       })
       .catch(() => {});
   }, []);
@@ -211,6 +214,11 @@ export default function ProfileEditor() {
             onLlmModelChange={setOllamaDefaultModel}
             ollamaModels={ollamaModels}
             ollamaStatus={ollamaStatus}
+            openRouterModels={openRouterModels}
+            openRouterModel={promptState.llmModel}
+            onOpenRouterModelChange={promptState.setLlmModel}
+            reasoningEnabled={promptState.reasoningEnabled}
+            onReasoningEnabledChange={promptState.setReasoningEnabled}
             radioName="llm_provider_profile"
           />
 

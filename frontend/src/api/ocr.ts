@@ -40,6 +40,9 @@ export async function runOCR(
     if (llmConfig.max_ocr_chars) {
       formData.append("llm_max_ocr_chars", String(llmConfig.max_ocr_chars));
     }
+    if (llmConfig.reasoning_enabled) {
+      formData.append("reasoning_enabled", "true");
+    }
   }
   return apiFetch<OCRRunResponse>("/api/v1/ocr/run", {
     method: "POST",

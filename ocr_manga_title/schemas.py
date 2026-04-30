@@ -3,11 +3,6 @@
 from datetime import UTC, datetime
 from typing import Any
 
-
-def utcnow() -> datetime:
-    """Return a naive UTC datetime (no tzinfo), matching the DB convention."""
-    return datetime.now(UTC).replace(tzinfo=None)
-
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from ocr_manga_title.exceptions import ConfigurationError
@@ -21,6 +16,11 @@ from ocr_manga_title.settings import (
     OPENROUTER_MAX_RETRIES,
     OPENROUTER_REQUEST_TIMEOUT,
 )
+
+
+def utcnow() -> datetime:
+    """Return a naive UTC datetime (no tzinfo), matching the DB convention."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class OpenRouterConfig(BaseModel):
@@ -59,10 +59,12 @@ class LLMPromptConfig(BaseModel):
     temperature: float = 0.1
 
     max_ocr_chars: int = 0
+    llm_model: str = ""
+    reasoning_enabled: bool = False
 
     def render_user_prompt(self, ocr_text: str) -> str:
         trimmed = ocr_text[:self.max_ocr_chars] if self.max_ocr_chars > 0 else ocr_text
-        return self.user_prompt_template.format_map({"ocr_text": trimmed})
+        return self.user_prompt_template.replace("{ocr_text}", trimmed)
 
     @classmethod
     def from_dict(cls, llm_config: dict | None) -> "LLMPromptConfig | None":
@@ -82,6 +84,8 @@ class LLMPromptConfig(BaseModel):
             user_prompt_template=llm_config.get("user_prompt_template", "{ocr_text}"),
             temperature=float(llm_config.get("temperature", 0.1)),
             max_ocr_chars=int(llm_config.get("max_ocr_chars", 0)),
+            llm_model=str(llm_config.get("llm_model", "")),
+            reasoning_enabled=bool(llm_config.get("reasoning_enabled", False)),
         )
 
 

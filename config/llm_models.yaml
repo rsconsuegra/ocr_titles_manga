@@ -1,0 +1,11 @@
+models:
+  - id: google/gemini-2.5-flash
+    label: Gemini 2.5 Flash
+  - id: minimax/minimax-m2.5:free
+    label: MiniMax M2.5(free)
+  - id: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    label: Nemotron 3 Nano Reasoning (free)
+  - id: meta-llama/llama-3.3-70b-instruct:free
+    label: Llama 3.3 70B (free)
+  - id: qwen/qwen3-next-80b-a3b-instruct:free
+    label: Qwen3 Next 80B (free)

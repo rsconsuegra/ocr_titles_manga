@@ -43,6 +43,9 @@ export async function quickRun(
     if (options.llmConfig.max_ocr_chars) {
       formData.append("llm_max_ocr_chars", String(options.llmConfig.max_ocr_chars));
     }
+    if (options.llmConfig.reasoning_enabled) {
+      formData.append("reasoning_enabled", "true");
+    }
   }
   if (options.profileId) {
     formData.append("profile_id", options.profileId);

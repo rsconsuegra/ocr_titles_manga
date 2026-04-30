@@ -77,6 +77,7 @@ async def run_ocr(
     llm_user_prompt: str = Form(""),
     llm_temperature: str = Form(""),
     llm_max_ocr_chars: str = Form(""),
+    reasoning_enabled: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     """Run a single OCR model on the given image, optionally with LLM post-processing."""
@@ -110,7 +111,7 @@ async def run_ocr(
         llm_data = None
         if enable_llm and ocr_data.raw_text.strip():
             llm_cfg = parse_llm_form_config(
-                llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars
+                llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars, reasoning_enabled
             )
             llm_data = await asyncio.to_thread(
                 run_llm_extraction,

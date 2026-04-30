@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
+import { getOpenRouterModels } from "../api/llm";
 import { getOCRModels } from "../api/ocr";
 import { getPreprocessSteps } from "../api/preprocess";
 import { listProfiles } from "../api/profiles";
 import { quickRun } from "../api/run";
-import type { ModelDescriptorResponse, ProfileResponse, QuickRunResponse, StepDescriptor } from "../api/types";
+import type { ModelDescriptorResponse, OpenRouterModel, ProfileResponse, QuickRunResponse, StepDescriptor } from "../api/types";
 import { DsoButton, DsoCard, DsoErrorBanner, DsoSelect } from "../components/dso";
 import LlmConfigSection from "../components/LlmConfigSection";
 import LlmExtractionCard from "../components/LlmExtractionCard";
@@ -36,6 +37,7 @@ export default function QuickRun() {
   const [llmProvider, setLlmProvider] = useState("openrouter");
   const [llmModel, setLlmModel] = useState("");
   const promptState = useLlmPromptState();
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
   const [result, setResult] = useState<QuickRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function QuickRun() {
     getPreprocessSteps().then(setPreprocessSteps).catch(() => {});
     getOCRModels().then(setOcrModels).catch(() => {});
     listProfiles().then((res) => setProfiles(res.items)).catch(() => {});
+    getOpenRouterModels().then(setOpenRouterModels).catch(() => {});
   }, []);
 
   function handlePreprocessYamlUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -135,12 +138,15 @@ export default function QuickRun() {
         }
       }
 
+      const effectiveLlmModel = llmProvider === "openrouter"
+        ? promptState.llmModel
+        : llmModel;
       const resp = await quickRun(imageFile, {
         preprocessSteps: finalPpSteps,
         ocrModels: finalOcrModels,
         enableLlm,
         llmProvider,
-        llmModel: llmModel || undefined,
+        llmModel: effectiveLlmModel || undefined,
         llmConfig: promptState.toConfig(),
         profileId: selectedProfileId || undefined,
       });
@@ -270,6 +276,11 @@ export default function QuickRun() {
             onLlmModelChange={setLlmModel}
             ollamaModels={ollamaLlmModels}
             ollamaStatus={ollamaStatus}
+            openRouterModels={openRouterModels}
+            openRouterModel={promptState.llmModel}
+            onOpenRouterModelChange={promptState.setLlmModel}
+            reasoningEnabled={promptState.reasoningEnabled}
+            onReasoningEnabledChange={promptState.setReasoningEnabled}
             radioName="llm_provider_quick"
           />
 

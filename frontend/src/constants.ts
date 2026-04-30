@@ -6,4 +6,6 @@ export const LLM_DEFAULTS = {
   USER_PROMPT_TEMPLATE: "{ocr_text}",
   TEMPERATURE: 0.1,
   MAX_OCR_CHARS: 0,
+  LLM_MODEL: "",
+  REASONING_ENABLED: false,
 } as const;

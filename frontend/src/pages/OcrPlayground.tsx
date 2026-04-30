@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
+import { getOpenRouterModels } from "../api/llm";
 import { exportOCRConfig, getOCRModels, runOCR } from "../api/ocr";
-import type { ModelDescriptorResponse, OCRRunResponse } from "../api/types";
+import type { ModelDescriptorResponse, OCRRunResponse, OpenRouterModel } from "../api/types";
 import { DsoButton, DsoErrorBanner, DsoSelect } from "../components/dso";
 import LlmConfigSection from "../components/LlmConfigSection";
 import LlmExtractionCard from "../components/LlmExtractionCard";
@@ -24,6 +25,7 @@ export default function OcrPlayground() {
   const [llmProvider, setLlmProvider] = useState("openrouter");
   const [llmModel, setLlmModel] = useState("");
   const promptState = useLlmPromptState();
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
   const [result, setResult] = useState<OCRRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export default function OcrPlayground() {
         setSelectedModel(sel?.name || (data[0]?.name ?? ""));
       })
       .catch(() => setError("Failed to load OCR models"));
+    getOpenRouterModels().then(setOpenRouterModels).catch(() => {});
   }, []);
 
   const currentModel = models.find((m) => m.name === selectedModel);
@@ -47,13 +50,16 @@ export default function OcrPlayground() {
     setError(null);
     setResult(null);
     try {
+      const effectiveLlmModel = llmProvider === "openrouter"
+        ? promptState.llmModel
+        : llmModel;
       const resp = await runOCR(
         imageFile,
         selectedModel,
         params[selectedModel] || {},
         enableLlm,
         llmProvider,
-        llmModel,
+        effectiveLlmModel,
         promptState.toConfig(),
       );
       setResult(resp);
@@ -163,6 +169,11 @@ export default function OcrPlayground() {
             onLlmModelChange={setLlmModel}
             ollamaModels={ollamaLlmModels}
             ollamaStatus={ollamaStatus}
+            openRouterModels={openRouterModels}
+            openRouterModel={promptState.llmModel}
+            onOpenRouterModelChange={promptState.setLlmModel}
+            reasoningEnabled={promptState.reasoningEnabled}
+            onReasoningEnabledChange={promptState.setReasoningEnabled}
             radioName="llm_provider_ocr"
           />
 

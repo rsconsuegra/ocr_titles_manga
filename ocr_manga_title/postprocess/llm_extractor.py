@@ -115,16 +115,22 @@ class LLMExtractor:
         )
 
         try:
-            response = self._openai_client.chat.completions.create(
-                model=model,
-                messages=[
+            create_kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": [
                     {"role": "system", "content": self._system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                temperature=temperature,
-                response_format={"type": "json_object"},
-                timeout=self._timeout,
-            )
+                "temperature": temperature,
+                "response_format": {"type": "json_object"},
+                "timeout": self._timeout,
+            }
+            if (
+                self._prompt_config
+                and self._prompt_config.reasoning_enabled
+            ):
+                create_kwargs["extra_body"] = {"reasoning": {"enabled": True}}
+            response = self._openai_client.chat.completions.create(**create_kwargs)
         except _openai.AuthenticationError as e:
             raise LLMExtractionError(f"Authentication error: {e}") from e
         except (_openai.APIError, _openai.APITimeoutError) as e:

@@ -151,8 +151,11 @@ def run_llm_extraction(
             prompt_config=prompt_config,
         )
         llm_start = time.monotonic()
-        logger.info("LLM extraction started (provider=%s, model=%s)", effective_provider, llm_model)
-        extracted = extractor.extract(raw_text, model=llm_model)
+        effective_model = llm_model
+        if not effective_model and prompt_config and prompt_config.llm_model:
+            effective_model = prompt_config.llm_model
+        logger.info("LLM extraction started (provider=%s, model=%s)", effective_provider, effective_model)
+        extracted = extractor.extract(raw_text, model=effective_model)
         llm_ms = int((time.monotonic() - llm_start) * 1000)
         logger.info("LLM extraction finished in %dms", llm_ms)
         return LLMResultData(

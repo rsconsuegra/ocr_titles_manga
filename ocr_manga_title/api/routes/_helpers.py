@@ -66,8 +66,9 @@ def parse_llm_form_config(
     user_prompt: str,
     temperature: str,
     max_ocr_chars: str,
+    reasoning_enabled: str = "",
 ) -> dict | None:
-    if not (system_prompt or user_prompt or temperature or max_ocr_chars):
+    if not (system_prompt or user_prompt or temperature or max_ocr_chars or reasoning_enabled):
         return None
     try:
         temp_val = float(temperature) if temperature else 0.1
@@ -77,12 +78,15 @@ def parse_llm_form_config(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid numeric value for temperature or max_ocr_chars",
         )
-    return {
+    cfg: dict = {
         "system_prompt": system_prompt,
         "user_prompt_template": user_prompt or "{ocr_text}",
         "temperature": temp_val,
         "max_ocr_chars": chars_val,
     }
+    if reasoning_enabled:
+        cfg["reasoning_enabled"] = True
+    return cfg
 
 
 async def save_uploaded_image(

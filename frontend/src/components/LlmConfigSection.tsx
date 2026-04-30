@@ -1,4 +1,4 @@
-import type { OllamaModelInfo, OllamaStatusResponse } from "../api/types";
+import type { OllamaModelInfo, OllamaStatusResponse, OpenRouterModel } from "../api/types";
 import { DsoSelect } from "./dso";
 
 interface LlmConfigSectionProps {
@@ -12,6 +12,11 @@ interface LlmConfigSectionProps {
   onLlmModelChange: (value: string) => void;
   ollamaModels: OllamaModelInfo[];
   ollamaStatus: OllamaStatusResponse | null;
+  openRouterModels: OpenRouterModel[];
+  openRouterModel: string;
+  onOpenRouterModelChange: (value: string) => void;
+  reasoningEnabled: boolean;
+  onReasoningEnabledChange: (value: boolean) => void;
   radioName: string;
   label?: string;
 }
@@ -27,6 +32,11 @@ export default function LlmConfigSection({
   onLlmModelChange,
   ollamaModels,
   ollamaStatus,
+  openRouterModels,
+  openRouterModel,
+  onOpenRouterModelChange,
+  reasoningEnabled,
+  onReasoningEnabledChange,
   radioName,
   label = "Post-process with LLM",
 }: LlmConfigSectionProps) {
@@ -70,6 +80,29 @@ export default function LlmConfigSection({
               Ollama
             </label>
           </div>
+          {llmProvider === "openrouter" && openRouterModels.length > 0 && (
+            <DsoSelect
+              label="Model"
+              value={openRouterModel}
+              onChange={(e) => onOpenRouterModelChange(e.target.value)}
+            >
+              <option value="">Default (Gemini 2.5 Flash)</option>
+              {openRouterModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </DsoSelect>
+          )}
+          {llmProvider === "openrouter" && (
+            <label className="flex items-center gap-2 text-xs text-bright">
+              <input
+                type="checkbox"
+                checked={reasoningEnabled}
+                onChange={(e) => onReasoningEnabledChange(e.target.checked)}
+                className="rounded border-highlight/40 bg-inset accent-teal"
+              />
+              Enable reasoning
+            </label>
+          )}
           {llmProvider === "ollama" && ollamaStatus?.configured && ollamaModels.length > 0 && (
             <DsoSelect
               label="LLM Model"

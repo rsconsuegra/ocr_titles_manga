@@ -55,3 +55,11 @@ async def get_llm_providers():
 
     providers.append(ollama_info)
     return LLMProvidersResponse(providers=providers)
+
+
+@router.get("/openrouter/models")
+async def get_openrouter_models():
+    """Return available OpenRouter models from the YAML config."""
+    from ocr_manga_title.config import load_openrouter_models
+
+    return load_openrouter_models()

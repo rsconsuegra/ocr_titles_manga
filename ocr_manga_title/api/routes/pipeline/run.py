@@ -60,6 +60,7 @@ async def quick_run(
     llm_user_prompt: str = Form(""),
     llm_temperature: str = Form(""),
     llm_max_ocr_chars: str = Form(""),
+    reasoning_enabled: str = Form(""),
     profile_id: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -79,7 +80,7 @@ async def quick_run(
         )
     effective_llm_provider = llm_provider
     llm_cfg = parse_llm_form_config(
-        llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars
+        llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars, reasoning_enabled
     )
 
     if profile_id:

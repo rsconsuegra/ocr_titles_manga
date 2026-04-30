@@ -12,6 +12,10 @@ interface LlmPromptState {
   setLlmTemperature: (value: number) => void;
   llmMaxOcrChars: number;
   setLlmMaxOcrChars: (value: number) => void;
+  llmModel: string;
+  setLlmModel: (value: string) => void;
+  reasoningEnabled: boolean;
+  setReasoningEnabled: (value: boolean) => void;
   showPromptSettings: boolean;
   setShowPromptSettings: (value: boolean) => void;
   toConfig: () => LLMPromptConfig | undefined;
@@ -42,27 +46,30 @@ export function useLlmPromptState(defaults?: LlmPromptDefaults): LlmPromptState 
   const [llmMaxOcrChars, setLlmMaxOcrChars] = useState(
     defaults?.maxOcrChars ?? LLM_DEFAULTS.MAX_OCR_CHARS,
   );
+  const [llmModel, setLlmModel] = useState<string>(LLM_DEFAULTS.LLM_MODEL);
+  const [reasoningEnabled, setReasoningEnabled] = useState<boolean>(LLM_DEFAULTS.REASONING_ENABLED);
   const [showPromptSettings, setShowPromptSettings] = useState(false);
 
   const toConfig = useCallback((): LLMPromptConfig | undefined => {
-    if (llmSystemPrompt || llmUserPrompt !== LLM_DEFAULTS.USER_PROMPT_TEMPLATE) {
+    if (
+      llmSystemPrompt ||
+      llmUserPrompt !== LLM_DEFAULTS.USER_PROMPT_TEMPLATE ||
+      llmTemperature !== LLM_DEFAULTS.TEMPERATURE ||
+      llmMaxOcrChars > 0 ||
+      llmModel ||
+      reasoningEnabled
+    ) {
       return {
         system_prompt: llmSystemPrompt,
         user_prompt_template: llmUserPrompt || LLM_DEFAULTS.USER_PROMPT_TEMPLATE,
         temperature: llmTemperature,
         max_ocr_chars: llmMaxOcrChars,
-      };
-    }
-    if (llmTemperature !== LLM_DEFAULTS.TEMPERATURE || llmMaxOcrChars > 0) {
-      return {
-        system_prompt: llmSystemPrompt,
-        user_prompt_template: llmUserPrompt,
-        temperature: llmTemperature,
-        max_ocr_chars: llmMaxOcrChars,
+        llm_model: llmModel,
+        reasoning_enabled: reasoningEnabled,
       };
     }
     return undefined;
-  }, [llmSystemPrompt, llmUserPrompt, llmTemperature, llmMaxOcrChars]);
+  }, [llmSystemPrompt, llmUserPrompt, llmTemperature, llmMaxOcrChars, llmModel, reasoningEnabled]);
 
   const loadFromProfile = useCallback(
     (data: {
@@ -77,6 +84,8 @@ export function useLlmPromptState(defaults?: LlmPromptDefaults): LlmPromptState 
         );
         setLlmTemperature(data.llm_config.temperature ?? LLM_DEFAULTS.TEMPERATURE);
         setLlmMaxOcrChars(data.llm_config.max_ocr_chars ?? LLM_DEFAULTS.MAX_OCR_CHARS);
+        setLlmModel(data.llm_config.llm_model || "");
+        setReasoningEnabled(data.llm_config.reasoning_enabled ?? false);
       }
     },
     [],
@@ -91,6 +100,10 @@ export function useLlmPromptState(defaults?: LlmPromptDefaults): LlmPromptState 
     setLlmTemperature,
     llmMaxOcrChars,
     setLlmMaxOcrChars,
+    llmModel,
+    setLlmModel,
+    reasoningEnabled,
+    setReasoningEnabled,
     showPromptSettings,
     setShowPromptSettings,
     toConfig,

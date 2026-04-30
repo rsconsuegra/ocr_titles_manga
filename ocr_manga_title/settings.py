@@ -30,10 +30,15 @@ OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "ollama")
 OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3")
 
+# --- Worker ---
+WORKER_THREADS: int = int(os.getenv("WORKER_THREADS", "1"))
+WORKER_PROCESSES: int = int(os.getenv("WORKER_PROCESSES", "1"))
+
 # --- Config file paths ---
 CONFIG_PATH: str = "config/configs.toml"
 OCR_CONFIG_PATH: str = "config/ocrs.yaml"
 PREPROCESS_CONFIG_PATH: str = "config/preprocess.yaml"
+LLM_MODELS_PATH: str = "config/llm_models.yaml"
 
 # --- Upload limits ---
 UPLOAD_DIR: str = "uploads"

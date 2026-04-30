@@ -18,6 +18,7 @@ from ocr_manga_title.exceptions import ConfigurationError
 from ocr_manga_title.schemas import AppConfig, ModelConfig, PreProcessConfig
 from ocr_manga_title.settings import (
     CONFIG_PATH,
+    LLM_MODELS_PATH,
     OCR_CONFIG_PATH,
     OPENROUTER_API_KEY,
     PREPROCESS_CONFIG_PATH,
@@ -166,6 +167,36 @@ def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> 
         return disabled
 
     return data
+
+
+@functools.lru_cache(maxsize=1)
+def load_openrouter_models(
+    config_path: str | Path = LLM_MODELS_PATH,
+) -> list[dict[str, str]]:
+    config_path = Path(config_path)
+    if not config_path.exists():
+        return []
+
+    content = config_path.read_text()
+    if not content.strip():
+        return []
+
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return []
+
+    if not isinstance(data, dict) or "models" not in data:
+        return []
+
+    models = data["models"]
+    if not isinstance(models, list):
+        return []
+
+    return [
+        m for m in models
+        if isinstance(m, dict) and "id" in m and "label" in m
+    ]
 
 
 @dataclass(frozen=True)
