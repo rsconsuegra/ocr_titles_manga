@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from ocr_manga_title.postprocess.rule_matcher import RuleMatcher
 from ocr_manga_title.schemas import (
     AppConfig,
     ExtractedTitle,
+    LLMPromptConfig,
     ModelConfig,
     OCRResult,
     PipelineResult,
@@ -27,8 +28,6 @@ logger = logging.getLogger(__name__)
 
 
 def _build_prompt_config(llm_config: dict | None) -> LLMPromptConfig:
-    from ocr_manga_title.schemas import LLMPromptConfig
-
     return LLMPromptConfig.from_dict(llm_config)
 
 
@@ -149,42 +148,12 @@ class OCREngine:
         ocr_results: list[OCRResult] = []
         errors: list[str] = []
 
-        if len(self._models) <= 1:
-            for model in self._models:
-                result = self._run_single_model(model, image_path)
-                ocr_results.append(result)
-                if result.error is not None:
-                    errors.append(f"Model {model.name} failed: {result.error}")
-                    logger.error("Model %s failed: %s", model.name, result.error)
-        else:
-            with ThreadPoolExecutor(max_workers=len(self._models)) as pool:
-                futures = {
-                    pool.submit(self._run_single_model, model, image_path): model
-                    for model in self._models
-                }
-                file_not_found = False
-                for future in as_completed(futures):
-                    model = futures[future]
-                    try:
-                        result = future.result()
-                        ocr_results.append(result)
-                        if result.error is not None:
-                            errors.append(f"Model {model.name} failed: {result.error}")
-                            logger.error("Model %s failed: %s", model.name, result.error)
-                    except FileNotFoundError:
-                        if not file_not_found:
-                            errors.append(f"Image not found for {model.name}")
-                            logger.error("Image not found: %s", image_path)
-                        file_not_found = True
-                        for f in futures:
-                            f.cancel()
-                    except Exception as e:
-                        errors.append(f"Model {model.name} failed: {e}")
-                        logger.error(
-                            "Model %s failed: %s", model.name, e, exc_info=True
-                        )
-                if file_not_found:
-                    raise FileNotFoundError(f"Image not found: {image_path}")
+        for model in self._models:
+            result = self._run_single_model(model, image_path)
+            ocr_results.append(result)
+            if result.error is not None:
+                errors.append(f"Model {model.name} failed: {result.error}")
+                logger.error("Model %s failed: %s", model.name, result.error)
 
         return ocr_results, errors
 

@@ -134,8 +134,6 @@ async def update_catalog(
     db: AsyncSession = Depends(get_db),
 ):
     """Update fields on an existing catalog entry."""
-    from datetime import datetime
-
     entry = await get_catalog_entry(session=db, entry_id=entry_id)
     if not entry:
         raise HTTPException(

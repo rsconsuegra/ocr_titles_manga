@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from ocr_manga_title.preprocess.base import run_step_with_timeout
+from ocr_manga_title.preprocess.base import BasePreProcessor, run_step_with_timeout
 from ocr_manga_title.preprocess.registry import STEP_ORDER
 from ocr_manga_title.services.image import decode_image, numpy_to_temp_file
 
