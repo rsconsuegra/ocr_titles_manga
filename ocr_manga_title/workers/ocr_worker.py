@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import uuid
 from pathlib import Path
 
@@ -92,13 +93,20 @@ async def _check_cancelled(session: AsyncSession, run_id: uuid.UUID) -> None:
         raise RunCancelled(f"Run {run_id} was cancelled")
 
 
+_loop_local = threading.local()
+
+
+def _get_event_loop() -> asyncio.AbstractEventLoop:
+    loop = getattr(_loop_local, "loop", None)
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        _loop_local.loop = loop
+    return loop
+
+
 def _run_async(coro):
     sf = _get_worker_session_factory()
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro(sf))
-    finally:
-        loop.close()
+    return _get_event_loop().run_until_complete(coro(sf))
 
 
 async def _get_model_configs(session: AsyncSession) -> dict[str, ModelConfigSchema]:
@@ -232,7 +240,7 @@ def process_pipeline_run(run_id: str):
     except Exception as e:
         logger.error("Worker-level error for run %s: %s", run_id, e)
         try:
-            asyncio.run(_mark_run_failed(run_id, str(e)))
+            _get_event_loop().run_until_complete(_mark_run_failed(run_id, str(e)))
         except Exception:
             logger.exception("Failed to mark run %s as failed", run_id)
         raise

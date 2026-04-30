@@ -88,7 +88,7 @@ services:
       context: .
       args:
         OCR_EXTRA: ${OCR_EXTRA:-cpu}
-    command: ["dramatiq", "ocr_manga_title.workers.ocr_worker"]
+    command: ["dramatiq", "ocr_manga_title.workers.ocr_worker", "--processes", "${WORKER_PROCESSES:-1}", "--threads", "${WORKER_THREADS:-1}"]
     env_file: .env
     volumes:
       - ./uploads:/app/uploads
