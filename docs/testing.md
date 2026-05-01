@@ -5,7 +5,7 @@
 - **Framework**: pytest + pytest-asyncio
 - **Database**: SQLite in-memory (overridden via fixtures)
 - **HTTP Client**: httpx AsyncClient
-- **356 tests** across 15 test files
+- **374 tests** across 15 test files
 
 ---
 
@@ -38,6 +38,7 @@ tests/
 │   ├── test_ocr_playground.py      # OCR playground tests
 │   ├── test_pipeline.py            # Pipeline trigger/list/cancel tests (16 tests)
 │   ├── test_preprocess.py          # Preprocessing playground tests
+│   ├── test_profiles.py            # Profile endpoint tests
 │   ├── test_quick_run.py           # Quick run endpoint tests
 │   └── test_results.py             # Results endpoint tests
 ├── test_batch_progress.py          # Batch progress CRUD logic (5 tests)
@@ -47,7 +48,7 @@ tests/
 ├── test_engine/                    # OCREngine and model adapter tests
 ├── test_postprocess.py             # LLMExtractor + RuleMatcher tests
 ├── test_cache.py                   # Image cache service tests (12 tests)
-├──_preprocess.py                   # Preprocessing step tests
+├── test_preprocess.py              # Preprocessing step tests
 ├── test_schemas.py                 # Pydantic schema validation tests
 └── test_worker/                    # Dramatiq worker tests
 ```

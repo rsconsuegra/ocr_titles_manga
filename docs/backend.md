@@ -6,12 +6,16 @@
 |---|---|
 | `api/app.py` | FastAPI application factory, CORS, exception handlers |
 | `api/dependencies.py` | `get_db()` session dependency, `get_config()` loader |
-| `api/routes/` | 9 route modules with 33 endpoints total |
-| `api/schemas/` | Pydantic request/response schemas |
+| `api/routes/config/` | Settings, Ollama, LLM, profiles, catalog routes (5 files, 25 endpoints) |
+| `api/routes/pipeline/` | Runs, batches, inputs, results, run routes (5 files, 14 endpoints) |
+| `api/routes/ocr/` | OCR, preprocessing, models routes (3 files, 9 endpoints) |
+| `api/routes/_helpers.py` | Shared response helpers |
+| `api/schemas/` | 10 Pydantic request/response schema modules |
+| `api/schemas/ollama.py` | Ollama-related schemas |
 | `cli.py` | Single-image CLI pipeline runner |
 | `config.py` | Config file loaders (TOML, YAML) with caching |
-| `db/models.py` | 8 SQLAlchemy ORM models |
-| `db/crud.py` | ~40 async CRUD functions |
+| `db/models.py` | 10 SQLAlchemy ORM models |
+| `db/crud.py` | ~30 async CRUD functions |
 | `db/session.py` | Async engine + session factory |
 | `engine/base.py` | `BaseOCRModel` abstract base class |
 | `engine/registry.py` | `MODEL_REGISTRY` — single source of truth for OCR models |
@@ -20,8 +24,9 @@
 | `engine/paddle_model.py` | PaddleOCR adapter (production-ready, multilingual, GPU) |
 | `engine/easyocr_model.py` | EasyOCR adapter (production-ready, multilingual, GPU) |
 | `engine/glm_ocr_model.py` | Vision API adapter (production-ready, OpenAI-compatible) |
+| `engine/ollama_vision_model.py` | Ollama Vision OCR adapter (production-ready, multimodal) |
 | `exceptions.py` | Exception hierarchy |
-| `postprocess/llm_extractor.py` | OpenRouter LLM title extraction |
+| `postprocess/llm_extractor.py` | OpenRouter / Ollama LLM title extraction |
 | `postprocess/rule_matcher.py` | ISBN regex + title normalization |
 | `preprocess/base.py` | `BasePreProcessor` abstract base class |
 | `preprocess/registry.py` | `STEP_REGISTRY` + `STEP_ORDER` |
@@ -34,9 +39,14 @@
 | `services/ocr.py` | Model execution helpers |
 | `services/pipeline.py` | Result persistence + catalog sync |
 | `services/preprocess.py` | Step execution helper |
+| `services/ollama.py` | Ollama HTTP client (model discovery, completions) |
+| `services/credentials.py` | Fernet-encrypted credential storage |
+| `services/config_live.py` | Live TOML config read/write for Ollama settings |
+| `services/profile_import.py` | Profile import/export validation |
+| `services/warmup.py` | OCR model warmup on startup |
 | `settings.py` | Environment variables + constants + cache settings |
 | `workers/broker.py` | RedisBroker setup |
-| `workers/ocr_worker.py` | Dramatiq actor with cooperative cancellation + OOM check |
+| `workers/ocr_worker.py` | Dramatiq actor with cooperative cancellation + OOM check + model warmup |
 
 ---
 
@@ -73,6 +83,7 @@ Frozen dict mapping model name → `ModelDescriptor`. Each descriptor contains:
 | `paddle` | `PaddleModel` | **Production** | `languages` (multiselect: en, ja, ch, ko, spa, fra, deu, por, ita), `use_gpu` (boolean) |
 | `easyocr` | `EasyOCRModel` | **Production** | `languages` (multiselect: en, ja, ch_sim, ch_tra, ko, es, fr, de, pt, it), `gpu` (boolean) |
 | `glm_ocr` | `GLMOCRModel` | **Production** | `api_endpoint` (text), `model` (text), `api_key` (text), `prompt` (text) |
+| `ollama_vision` | `OllamaVisionModel` | **Production** | `model` (text), `base_url` (text) |
 
 **Adding a new model:**
 1. Create a new file in `engine/` implementing `BaseOCRModel`
@@ -142,19 +153,28 @@ Configured from the `preprocess.yaml` shape (or a profile snapshot). Each step c
 
 ### `LLMExtractor` (`postprocess/llm_extractor.py`)
 
-Sends raw OCR text to an OpenAI-compatible API (OpenRouter) and parses the structured JSON response.
+Sends raw OCR text to an OpenAI-compatible API (OpenRouter) or native Ollama `/api/chat` endpoint and parses the structured JSON response.
 
-**Constructor:** `LLMExtractor(config: OpenRouterConfig, prompt_path: str | None = None)`
+**Constructor:** `LLMExtractor(openrouter_config=None, ollama_config=None, provider="openrouter", prompt_path=None, prompt_config=None)`
 
-- Creates an `openai.OpenAI` client with the configured API key, base URL, and timeout
+Supports two backends:
+- **openrouter** — OpenAI-compatible API via the `openai` client
+- **ollama** — Native Ollama `/api/chat` endpoint via `httpx`
+
+- Creates an `openai.OpenAI` client with the configured API key, base URL, and timeout (when using openrouter)
 - Loads the system prompt from `prompts/llm/extract_title_v1.md` (or uses a hardcoded fallback)
 - Uses `temperature=0.1` and `response_format={"type": "json_object"}`
 
-**`extract(raw_text, model=None) → ExtractedTitle`:**
+**`extract(raw_text, model=None, *, supports_json_mode=True) → ExtractedTitle`:**
 - Sends a chat completion with system prompt + user message (raw text)
+- Supports per-model JSON mode via `supports_json_mode` flag — when `True`, uses `response_format={"type": "json_object"}`; when `False`, skips it and relies on prompt instructions
 - Parses JSON from the response (tolerates markdown code fences)
 - Raises `LLMExtractionError` on auth errors, API errors, or unparseable responses
-- Returns `ExtractedTitle` with `title_en`, `title_ja`, `code`, `confidence`, `source_method="llm"`
+- The `_build_result()` method separates `_CORE_FIELDS` (`title_en`, `title_ja`, `code`, `confidence`) from extra fields
+- Returns `ExtractedTitle` with core fields plus `extra_metadata` dict containing `author`, `social_page`, and other non-core fields
+- Logs response length
+
+**Field alias resolution:** `_normalize_keys()` maps common LLM aliases (e.g. `manga_name` → `title_en`, `sauce` → `code`, `artist` → `author`) to canonical field names.
 
 ### `RuleMatcher` (`postprocess/rule_matcher.py`)
 
@@ -245,6 +265,65 @@ Result persistence:
 |---|---|
 | `build_run_config_snapshot(profile)` | Extract JSON snapshot from a `PipelineProfile` for storage in `PipelineRun.preprocess_config` |
 
+### `services/ollama.py`
+
+Ollama HTTP client — model discovery and chat completions via native API:
+
+| Function | Purpose |
+|---|---|
+| `list_models()` | GET `/api/tags` — list available Ollama models with metadata (cached 5 min) |
+| `list_vision_models()` | List models with `vision` capability (queries `/api/show` per model, cached) |
+| `is_ollama_configured()` | Return `True` if `OLLAMA_BASE_URL` is set |
+| `chat_completion(model, messages, ...)` | POST `/api/chat` — async non-streaming chat completion |
+| `chat_completion_sync(model, messages, ...)` | Synchronous version for use in OCR adapters |
+| `invalidate_cache()` | Clear the in-process model list cache |
+
+### `services/credentials.py`
+
+Fernet-encrypted credential storage for external API services:
+
+| Function | Purpose |
+|---|---|
+| `encrypt_value(plain)` | Encrypt a plaintext string using Fernet symmetric encryption |
+| `decrypt_value(token)` | Decrypt a Fernet-encrypted token back to plaintext |
+| `get_active_key(session, service_name, env_default)` | Return decrypted active API key for a service (DB first, then env fallback) |
+| `store_key(session, service_name, api_key)` | Encrypt and upsert an API key for a service |
+| `deactivate_key(session, service_name)` | Remove stored key (revert to env default) |
+| `get_credential_info(session, service_name, env_default)` | Return credential status for the UI (masked key, source, active) |
+| `validate_openrouter_key(api_key)` | Test an OpenRouter key by making a lightweight `/models` request |
+
+### `services/config_live.py`
+
+Live TOML config read/write for Ollama settings (thread-safe, invalidates config cache on writes):
+
+| Function | Purpose |
+|---|---|
+| `read_toml()` | Read and parse the current `configs.toml` |
+| `get_ollama_base_url()` | Return the current `ollama.base_url` from TOML |
+| `get_ollama_default_model()` | Return the default Ollama LLM model from TOML |
+| `get_ollama_default_vision_model()` | Return the default Ollama vision model from TOML |
+| `get_ollama_config()` | Return the full `[ollama]` section from TOML |
+| `write_ollama_base_url(new_url)` | Update `ollama.base_url` in TOML + invalidate caches |
+| `write_ollama_models(default_model, default_vision_model)` | Update default model settings in TOML + invalidate caches |
+| `ping_ollama(base_url)` | Ping an Ollama instance to verify connectivity (async) |
+
+### `services/profile_import.py`
+
+Profile import/export validation:
+
+| Function / Class | Purpose |
+|---|---|
+| `validate_profile_data(profile_data)` | Validate raw profile data, return `ProfileValidationResult` with errors/warnings |
+| `resolve_name_conflict(session, name)` | Append numeric suffix until name is unique (async) |
+| `ProfileValidationResult` | Dataclass with `warnings`, `errors` lists and `is_valid` property |
+| `ValidationMessage` | Single validation message tied to a field |
+
+### `services/warmup.py`
+
+| Function | Purpose |
+|---|---|
+| `warmup_models()` | Pre-load all local OCR models (paddle, easyocr, tesseract), return names that succeeded |
+
 ---
 
 ## Settings (`settings.py`)
@@ -263,6 +342,7 @@ Module-level constants loaded from environment variables at import time:
 | `CONFIG_PATH` | `config/configs.toml` | Main config file |
 | `OCR_CONFIG_PATH` | `config/ocrs.yaml` | OCR model config |
 | `PREPROCESS_CONFIG_PATH` | `config/preprocess.yaml` | Preprocessing config |
+| `LLM_MODELS_PATH` | `config/llm_models.yaml` | LLM model definitions |
 | `UPLOAD_DIR` | `uploads` | File upload directory |
 | `ALLOWED_EXTENSIONS` | `.png .jpg .jpeg .webp .tiff .tif .bmp` | Accepted image formats |
 | `MAX_FILE_SIZE` | 20 MB | Per-file upload limit |
@@ -273,6 +353,14 @@ Module-level constants loaded from environment variables at import time:
 | `OPENROUTER_REQUEST_TIMEOUT` | 30.0 | LLM request timeout |
 | `OPENROUTER_MAX_RETRIES` | 3 | LLM retry count |
 | `OPENROUTER_API_KEY_PREFIX` | `sk-` | API key validation prefix |
+| `OPENROUTER_API_KEY` | `""` | OpenRouter API key (from env) |
+| `OLLAMA_BASE_URL` | `""` | Ollama API base URL (from env) |
+| `OLLAMA_API_KEY` | `ollama` | Ollama API key (from env) |
+| `OLLAMA_TIMEOUT` | 120.0 | Ollama request timeout |
+| `OLLAMA_DEFAULT_MODEL` | `llama3` | Default Ollama model |
+| `WORKER_THREADS` | 1 | Worker thread count |
+| `WORKER_PROCESSES` | 1 | Worker process count |
+| `SERVER_SECRET` | `""` | Fernet encryption key for credential storage (from env) |
 | `IMAGES_PATH` | `/app/uploads` | Debug image output directory |
 | `CACHE_DIR` | `/app/cache` | Image cache storage directory |
 | `CACHE_TTL_DAYS` | `7` | Cache entry TTL (days) |
@@ -281,6 +369,10 @@ Module-level constants loaded from environment variables at import time:
 ---
 
 ## Worker (`workers/ocr_worker.py`)
+
+### Model Warmup
+
+On module import (when logging handlers are configured), the worker calls `warmup_models()` from `services/warmup.py`. This pre-loads all local OCR models (paddle, easyocr, tesseract) so that first requests do not incur cold-start latency.
 
 ### Dramatiq Actor: `process_pipeline_run`
 
@@ -304,7 +396,7 @@ def process_pipeline_run(run_id: str): ...
 5. **OOM pre-flight check**: `_check_available_memory()` reads `/proc/meminfo`, raises PermanentError if < 512MB available
 6. Verifies image file exists on disk
 7. **Config resolution**:
-   - If `run.preprocess_config` is set: extracts `ocr_models`, `preprocess_steps`, `enable_llm` from snapshot
+   - If `run.preprocess_config` is set: extracts `ocr_models`, `preprocess_steps`, `enable_llm`, `llm_provider`, `llm_config` from snapshot
    - If null: loads from global files + DB (`load_config()`, `_get_model_configs()`, `load_preprocess_config()`)
 8. **Cooperative checkpoint**: checks DB for cancelled status before engine instantiation
 9. Creates `OCREngine` and calls `engine.process(image_path, enable_llm=enable_llm)`

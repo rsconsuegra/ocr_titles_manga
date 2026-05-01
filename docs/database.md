@@ -3,21 +3,26 @@
 ## Schema Diagram
 
 ```
-┌──────────────────┐       ┌──────────────────────┐       ┌─────────────────────────┐
-│   pipeline_      │       │      ocr_results      │       │ post_processing_results  │
-│     profiles     │       │                       │       │                          │
-├──────────────────┤       ├──────────────────────┤       ├──────────────────────────┤
-│ id (PK, UUID)    │       │ id (PK, UUID)        │       │ id (PK, UUID)            │
-│ name (UNIQUE)    │       │ pipeline_run_id (FK) │──────►│ ocr_result_id (FK)       │
-│ description      │       │ model_name           │       │ prompt_version_id (FK)   │──┐
-│ preprocess_steps │       │ raw_text             │       │ title_en                 │  │
-│ ocr_models       │       │ confidence           │       │ title_ja                 │  │
-│ enable_llm       │       │ processing_time_ms   │       │ code                     │  │
-│ is_default       │       │ error                │       │ confidence               │  │
-│ created_at       │       │ created_at           │       │ processing_type          │  │
-│ updated_at       │       └──────────────────────┘       │ created_at               │  │
-└──────────────────┘                                      └──────────────────────────┘  │
-                                                                                         │
+┌──────────────────┐       ┌──────────────────────┐       ┌─────────────────────────────┐
+│   pipeline_      │       │      ocr_results      │       │  post_processing_results     │
+│     profiles     │       │                       │       │                              │
+├──────────────────┤       ├──────────────────────┤       ├──────────────────────────────┤
+│ id (PK, UUID)    │       │ id (PK, UUID)        │       │ id (PK, UUID)                │
+│ name (UNIQUE)    │       │ pipeline_run_id (FK) │──────►│ ocr_result_id (FK)           │
+│ description      │       │ model_name           │       │ prompt_version_id (FK)       │──┐
+│ preprocess_steps │       │ raw_text             │       │ title_en                     │  │
+│ ocr_models       │       │ confidence           │       │ title_ja                     │  │
+│ enable_llm       │       │ processing_time_ms   │       │ code                         │  │
+│ llm_provider     │       │ error                │       │ confidence                   │  │
+│ llm_config (JSON)│       │ created_at           │       │ processing_type              │  │
+│ is_default       │       └──────────────────────┘       │ system_prompt_used           │  │
+│ created_at       │                                      │ user_prompt_used             │  │
+│ updated_at       │                                      │ temperature_used             │  │
+└──────────────────┘                                      │ raw_response                 │  │
+                                                          │ extra_metadata (JSONB)       │  │
+                                                          │ created_at                   │  │
+                                                          └──────────────────────────────┘  │
+                                                                                             │
 ┌──────────────────┐       ┌──────────────────────┐       ┌─────────────────────────┐  │
 │   batch_runs     │       │   pipeline_runs       │       │    prompt_versions      │  │
 ├──────────────────┤       ├──────────────────────┤       ├─────────────────────────┤  │
@@ -72,13 +77,24 @@
 │ created_at       │
 │ expires_at       │
 └──────────────────┘
+
+┌──────────────────┐
+│   api_credentials │
+├──────────────────┤
+│ id (PK, UUID)    │
+│ service_name (UQ)│
+│ encrypted_api_key│
+│ is_active        │
+│ created_at       │
+│ updated_at       │
+└──────────────────┘
 ```
 
 ---
 
 ## ORM Models
 
-All 9 models inherit from `Base(DeclarativeBase)` in `db/models.py`.
+All 10 models inherit from `Base(DeclarativeBase)` in `db/models.py`.
 
 ### `PipelineProfile`
 
@@ -92,6 +108,8 @@ Stores named, reusable pipeline configurations.
 | `preprocess_steps` | JSON | nullable | | `{step_name: {param: value, ...}, ...}` |
 | `ocr_models` | JSON | nullable | | `{model_name: {param: value, ...}, ...}` |
 | `enable_llm` | Boolean | NOT NULL | `False` | |
+| `llm_provider` | String(20) | NOT NULL | `"openrouter"` | LLM provider name |
+| `llm_config` | JSON | nullable | | Provider-specific configuration |
 | `is_default` | Boolean | NOT NULL | `False` | At most one should be True |
 | `created_at` | DateTime | NOT NULL | `now()` | Server default |
 | `updated_at` | DateTime | nullable | `now()` | Auto-updates on change |
@@ -170,6 +188,11 @@ LLM or rule-extracted title metadata.
 | `code` | String(50) | nullable | | ISBN code |
 | `confidence` | Float | NOT NULL | | 0.0–1.0 |
 | `processing_type` | String(20) | NOT NULL | | `"llm"`, `"rules"`, `"llm+rules"`, `"unknown"` |
+| `system_prompt_used` | Text | nullable | | System prompt sent to LLM |
+| `user_prompt_used` | Text | nullable | | User prompt sent to LLM |
+| `temperature_used` | Float | nullable | | Temperature parameter used |
+| `raw_response` | Text | nullable | | Raw LLM response text |
+| `extra_metadata` | JSONB | nullable | | Additional metadata |
 | `created_at` | DateTime | NOT NULL | `now()` | |
 
 ### `CatalogEntry`
@@ -235,6 +258,19 @@ Content-addressable cache for preprocessed images and OCR results.
 
 **Unique Index**: `uq_image_cache_lookup` on `(image_hash, config_hash, cache_type)`
 **Index**: `ix_image_cache_expires_at` on `expires_at`
+
+### `ApiCredential`
+
+Encrypted API key storage for external services.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| `id` | UUID | PK | `uuid4()` | |
+| `service_name` | String(50) | **UNIQUE, NOT NULL** | | e.g. `"openrouter"`, `"openai"` |
+| `encrypted_api_key` | Text | NOT NULL | | Encrypted using Fernet symmetric encryption via `SERVER_SECRET` env var |
+| `is_active` | Boolean | NOT NULL | `True` | |
+| `created_at` | DateTime | NOT NULL | `now()` | Server default |
+| `updated_at` | DateTime | nullable | | Auto-updates on change |
 
 ---
 
@@ -315,6 +351,8 @@ Managed by Alembic. Config in `alembic.ini`, env in `migrations/env.py`.
 | 004 | `004_add_batch_run.py` | Creates `batch_runs` table + adds `batch_run_id` FK to `pipeline_runs` |
 | 005 | `005_add_pipeline_profile.py` | Creates `pipeline_profiles` table + index on `is_default` |
 | 006 | `006_add_image_cache.py` | Creates `image_cache` table with composite unique index + expiration index |
+| 007 | `df2ddc82063a_add_raw_response_to_post_processing_.py` | Adds `raw_response`, `system_prompt_used`, `user_prompt_used`, `temperature_used` to `post_processing_results` |
+| 008 | `6e6dc63619af_add_extra_metadata_to_post_processing_.py` | Adds `extra_metadata` JSONB column to `post_processing_results` |
 
 ### Running Migrations
 

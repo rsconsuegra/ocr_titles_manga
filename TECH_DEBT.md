@@ -22,3 +22,22 @@ The LLM extractor assumes `confidence` is a numeric value (`float(normalized.get
 - Validate confidence type in `ExtractedTitle` validator
 
 **Priority:** Medium. The retry-without-JSON-mode fallback works, but any custom prompt returning non-numeric confidence will crash the extraction.
+
+## LLM extraction strategy: `all_ocr` opt-in
+
+The worker pipeline supports two strategies for feeding OCR results to the LLM:
+
+- **`best_ocr`** (current default): Picks the highest-confidence OCR result and sends only that text to the LLM (1 call). Used by Quick Run, Playground, and Worker.
+- **`all_ocr`**: Sends each OCR model's text to the LLM independently (N calls), then picks the best extraction. More thorough but N× cost and time.
+
+The `all_ocr` strategy is implemented in `OCREngine._llm_extract_all()` but is **not yet exposed** via `PipelineProfile` or the frontend.
+
+**To enable later:**
+1. Add `llm_strategy` column to `pipeline_profiles` (VARCHAR(20), default `'best_ocr'`)
+2. Alembic migration
+3. Pass `strategy` param through `OCREngine._extract_titles()`
+4. Frontend: profile editor dropdown
+
+**Location:** `ocr_manga_title/engine/ocr_engine.py` (`_llm_extract_from_results`), `ocr_manga_title/services/ocr.py` (`pick_best_ocr`)
+
+**Priority:** Low. `best_ocr` works well for typical use. `all_ocr` only helps when different OCR engines extract meaningfully different text that the LLM interprets differently.

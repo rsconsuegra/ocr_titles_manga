@@ -25,7 +25,10 @@ frontend/src/
 │   ├── catalog.ts            # Catalog CRUD
 │   ├── ocr.ts                # OCR model registry + run
 │   ├── preprocess.ts         # Step descriptors + preview
-│   └── run.ts                # Quick run
+│   ├── run.ts                # Quick run
+│   ├── settings.ts           # Credential management
+│   ├── ollama.ts             # Ollama status and model listing
+│   └── llm.ts                # LLM provider/model discovery
 ├── components/               # Reusable UI components
 │   ├── ConfidenceMeter.tsx   # Visual confidence bar
 │   ├── ImageCompare.tsx      # Side-by-side image comparison
@@ -49,7 +52,8 @@ frontend/src/
 │   ├── OcrPlayground.tsx     # Single model OCR testing
 │   ├── PreprocessPlayground.tsx # Step-by-step preprocessing
 │   ├── Profiles.tsx          # Profile list management
-│   └── ProfileEditor.tsx     # Profile create/edit form
+│   ├── ProfileEditor.tsx     # Profile create/edit form
+│   └── Settings.tsx          # Settings page (API keys, Ollama config)
 ├── App.tsx                   # Router + navigation
 ├── main.tsx                  # Entry point
 └── index.css                 # Tailwind imports
@@ -78,6 +82,7 @@ Defined in `App.tsx` using React Router v7 `<BrowserRouter>`:
 | `/profiles/new` | `ProfileEditor` | Create profile |
 | `/profiles/:id/edit` | `ProfileEditor` | Edit profile |
 | `/preprocess` | `PreprocessPlayground` | Alias |
+| `/settings` | `Settings` | API keys + Ollama configuration |
 
 ---
 
@@ -92,7 +97,7 @@ Dashboard | History ▾ | Playground ▾ | Run ▾ | Config ▾
 - **History**: Runs, Batches, Catalog
 - **Playground**: Preprocessing, OCR
 - **Run**: Quick Run, Full Pipeline
-- **Config**: Profiles
+- **Config**: Profiles, Settings
 
 ---
 
@@ -162,6 +167,33 @@ All API calls go through domain-specific modules in `api/`. The base URL is `htt
 |---|---|---|
 | `quickRun(file, options?)` | POST | `/run/quick` |
 
+### `api/settings.ts`
+
+| Function | Method | Endpoint |
+|---|---|---|
+| `getCredential(service)` | GET | `/settings/credentials/{service}` |
+| `setCredential(service, data)` | PUT | `/settings/credentials/{service}` |
+| `deleteCredential(service)` | DELETE | `/settings/credentials/{service}` |
+| `testCredential(service)` | POST | `/settings/credentials/{service}/test` |
+| `getOllamaConfig()` | GET | `/settings/ollama` |
+| `updateOllamaConfig(data)` | PUT | `/settings/ollama` |
+| `pingOllama()` | POST | `/settings/ollama/ping` |
+
+### `api/ollama.ts`
+
+| Function | Method | Endpoint |
+|---|---|---|
+| `getOllamaStatus()` | GET | `/ollama/status` |
+| `listOllamaModels()` | GET | `/ollama/models` |
+| `listOllamaVisionModels()` | GET | `/ollama/vision-models` |
+
+### `api/llm.ts`
+
+| Function | Method | Endpoint |
+|---|---|---|
+| `getLLMProviders()` | GET | `/llm/providers` |
+| `getLLMModels()` | GET | `/llm/models` |
+
 ---
 
 ## Key Types (`api/types.ts`)
@@ -185,6 +217,11 @@ All API calls go through domain-specific modules in `api/`. The base URL is `htt
 | `ParamDescriptor` | Step/model parameter definition |
 | `PreviewStepResponse` | Single step preview result |
 | `PreviewPipelineResponse` | Full pipeline preview result |
+| `SettingsResponse` | Settings state |
+| `CredentialResponse` | Credential status (has_key, service) |
+| `OllamaStatusResponse` | Ollama connection status |
+| `LLMProviderInfo` | Provider name, label, available |
+| `LLMProvidersResponse` | List of providers |
 
 ---
 
@@ -248,7 +285,7 @@ Horizontal strip showing the output of each preprocessing step with timing.
 
 ```typescript
 const readFile = useFileReader();
-const dataUrl = await readFile(file); // returns base64 data URL
+const dataUrl = await readFile(file);
 ```
 
 Wraps `FileReader.readAsDataURL` in a Promise.
@@ -288,6 +325,7 @@ Parses a YAML string and extracts config dicts + enabled booleans for each step/
 - Pipeline run status and metadata
 - OCR results with confidence scores
 - Post-processing results (LLM + rules)
+- Displays `extra_metadata` key-value pairs if present (e.g., `author`, `social_page`)
 - **Cancel button** (visible for pending/processing runs)
 - **Retry button** (visible for failed/completed/cancelled runs)
 
@@ -303,8 +341,16 @@ Parses a YAML string and extracts config dicts + enabled booleans for each step/
 
 - Used for both create and edit (detects `:id` route param)
 - Name, description inputs
+- `llm_provider` dropdown (OpenRouter / Ollama)
+- `llm_config` section with system prompt, temperature, model selection
 - Preprocessing section: iterates `STEP_ORDER`, renders `PreprocessStepCard` for each
 - OCR Models section: iterates models, renders toggle + params
 - LLM toggle
 - Default profile checkbox
 - Save / Cancel buttons
+
+### Settings (`pages/Settings.tsx`)
+
+- Two tabs: "API Keys" and "Ollama"
+- **API Keys tab**: Shows OpenRouter and Ollama credential status with masked keys. Set/test/delete credentials.
+- **Ollama tab**: Shows Ollama connection status, base URL input with save, ping button, default model dropdowns (text + vision).

@@ -14,18 +14,21 @@
 
 | Router | Prefix | File | Endpoints |
 |---|---|---|---|
-| Inputs | `/api/v1/inputs` | `api/routes/inputs.py` | 2 |
-| Pipeline | `/api/v1/pipeline` | `api/routes/pipeline.py` | 4 |
-| Results | `/api/v1/results` | `api/routes/results.py` | 2 |
-| Catalog | `/api/v1/catalog` | `api/routes/catalog.py` | 4 |
-| Models | `/api/v1/models` | `api/routes/models.py` | 2 |
-| Preprocess | `/api/v1/preprocess` | `api/routes/preprocess.py` | 4 |
-| OCR | `/api/v1/ocr` | `api/routes/ocr.py` | 3 |
-| Run | `/api/v1/run` | `api/routes/run.py` | 1 |
-| Batches | `/api/v1/batches` | `api/routes/batches.py` | 4 |
-| Profiles | `/api/v1/profiles` | `api/routes/profiles.py` | 6 |
+| Inputs | `/api/v1/inputs` | `api/routes/pipeline/inputs.py` | 2 |
+| Pipeline Runs | `/api/v1/pipeline` | `api/routes/pipeline/runs.py` + `run.py` | 6 |
+| Results | `/api/v1/results` | `api/routes/pipeline/results.py` | 2 |
+| Catalog | `/api/v1/catalog` | `api/routes/config/catalog.py` | 4 |
+| Models | `/api/v1/models` | `api/routes/ocr/models.py` | 2 |
+| Preprocess | `/api/v1/preprocess` | `api/routes/ocr/preprocess.py` | 4 |
+| OCR | `/api/v1/ocr` | `api/routes/ocr/ocr.py` | 3 |
+| Run | `/api/v1/run` | `api/routes/pipeline/run.py` | 1 |
+| Batches | `/api/v1/batches` | `api/routes/pipeline/batches.py` | 4 |
+| Profiles | `/api/v1/profiles` | `api/routes/config/profiles.py` | 9 |
+| Ollama | `/api/v1/ollama` | `api/routes/config/ollama.py` | 3 |
+| LLM | `/api/v1/llm` | `api/routes/config/llm.py` | 2 |
+| Settings | `/api/v1/settings` | `api/routes/config/settings.py` | 7 |
 
-**Total: 32 endpoints**
+**Total: 49 endpoints across 13 route modules**
 
 ---
 
@@ -123,6 +126,8 @@ Get detailed run with nested OCR and post-processing results.
           "code": "9784088725093",
           "confidence": 0.92,
           "processing_type": "llm+rules",
+          "raw_response": null,
+          "extra_metadata": {"author": "Eiichiro Oda"},
           "created_at": "..."
         }
       ]
@@ -496,6 +501,236 @@ Set a profile as the default. Unsets any previous default.
 
 **Response**: `ProfileResponse`
 
+### `POST /profiles/import`
+
+Import a profile from JSON with validation.
+
+**Request**: `ProfileImportRequest`
+```json
+{
+  "name": "Imported Profile",
+  "description": "Profile imported from external config",
+  "preprocess_steps": {
+    "grayscale": {"enabled": true},
+    "binarize": {"enabled": true, "method": "otsu"}
+  },
+  "ocr_models": {
+    "tesseract": {"enabled": true, "languages": ["eng", "jpn"]}
+  },
+  "enable_llm": true,
+  "is_default": false
+}
+```
+
+**Response**: `ProfileResponse` (201 Created)
+
+### `GET /profiles/{profile_id}/export`
+
+Export a profile as a downloadable JSON file.
+
+**Response**: `application/json` with `Content-Disposition: attachment; filename="<profile_name>.json"`
+
+### `POST /profiles/{profile_id}/duplicate`
+
+Duplicate an existing profile. The new profile has the same configuration with ` (copy)` appended to the name.
+
+**Response**: `ProfileResponse` (201 Created)
+
+---
+
+## Ollama (`/api/v1/ollama`)
+
+### `GET /ollama/status`
+
+Get the current Ollama configuration and connectivity status.
+
+**Response**: `OllamaStatusResponse`
+```json
+{
+  "configured": true,
+  "base_url": "http://localhost:11434",
+  "default_model": "llama3",
+  "default_vision_model": "llava"
+}
+```
+
+### `GET /ollama/models`
+
+List available text-generation models from the connected Ollama instance.
+
+**Response**: `list[OllamaLLMModelResponse]`
+```json
+[
+  {
+    "name": "llama3",
+    "size": 4661224676,
+    "modified_at": "2026-04-28T12:00:00Z"
+  }
+]
+```
+
+### `GET /ollama/vision-models`
+
+List available vision-capable models from the connected Ollama instance.
+
+**Response**: `list[OllamaVisionModelResponse]`
+```json
+[
+  {
+    "name": "llava",
+    "size": 4799999904,
+    "modified_at": "2026-04-28T12:00:00Z"
+  }
+]
+```
+
+---
+
+## LLM (`/api/v1/llm`)
+
+### `GET /llm/providers`
+
+List available LLM providers and their availability status.
+
+**Response**: `LLMProvidersResponse`
+```json
+{
+  "providers": [
+    {
+      "name": "openrouter",
+      "label": "OpenRouter",
+      "available": true
+    },
+    {
+      "name": "ollama",
+      "label": "Ollama (Local)",
+      "available": false
+    }
+  ]
+}
+```
+
+### `GET /llm/models`
+
+List available LLM models with their capabilities.
+
+**Response**: `list[LLMModelInfo]`
+```json
+[
+  {
+    "id": "openai/gpt-oss-1",
+    "label": "GPT-oss-1",
+    "supports_json_mode": true
+  },
+  {
+    "id": "anthropic/claude-sonnet-4",
+    "label": "Claude Sonnet 4",
+    "supports_json_mode": true
+  }
+]
+```
+
+---
+
+## Settings (`/api/v1/settings`)
+
+### `GET /settings/credentials/{service}`
+
+Check whether a credential (API key) is configured for a given service.
+
+- **Path Params**: `service` — service name (e.g. `openrouter`, `ollama`)
+
+**Response**:
+```json
+{
+  "has_key": true
+}
+```
+
+### `PUT /settings/credentials/{service}`
+
+Set or update the API key for a service.
+
+- **Path Params**: `service` — service name
+
+**Request**:
+```json
+{
+  "api_key": "sk-or-v1-..."
+}
+```
+
+**Response**: `204 No Content`
+
+### `DELETE /settings/credentials/{service}`
+
+Delete the stored credential for a service.
+
+- **Path Params**: `service` — service name
+
+**Response**: `204 No Content`
+
+### `POST /settings/credentials/{service}/test`
+
+Test the validity of the stored credential for a service by making a lightweight API call.
+
+- **Path Params**: `service` — service name
+
+**Response**:
+```json
+{
+  "valid": true,
+  "message": "Credential validated successfully"
+}
+```
+
+### `GET /settings/ollama`
+
+Get the current Ollama configuration.
+
+**Response**:
+```json
+{
+  "base_url": "http://localhost:11434",
+  "default_model": "llama3",
+  "default_vision_model": "llava"
+}
+```
+
+### `PUT /settings/ollama`
+
+Update the Ollama configuration.
+
+**Request**:
+```json
+{
+  "base_url": "http://192.168.1.100:11434",
+  "default_model": "mistral",
+  "default_vision_model": "bakllava"
+}
+```
+
+**Response**:
+```json
+{
+  "base_url": "http://192.168.1.100:11434",
+  "default_model": "mistral",
+  "default_vision_model": "bakllava"
+}
+```
+
+### `POST /settings/ollama/ping`
+
+Ping the configured Ollama instance to verify connectivity.
+
+**Response**:
+```json
+{
+  "reachable": true,
+  "latency_ms": 12
+}
+```
+
 ---
 
 ## Common Response Schemas
@@ -533,6 +768,22 @@ Extends `PipelineRunResponse` with:
 }
 ```
 
+### `PostProcessingResultResponse`
+
+```json
+{
+  "id": "uuid",
+  "title_en": "string | null",
+  "title_ja": "string | null",
+  "code": "string | null",
+  "confidence": 0.92,
+  "processing_type": "llm+rules",
+  "raw_response": "string | null",
+  "extra_metadata": "object | null",
+  "created_at": "datetime"
+}
+```
+
 ### `BatchRunResponse`
 
 ```json
@@ -561,6 +812,61 @@ Extends `PipelineRunResponse` with:
   "is_default": false,
   "created_at": "datetime",
   "updated_at": "datetime | null"
+}
+```
+
+### `OllamaStatusResponse`
+
+```json
+{
+  "configured": true,
+  "base_url": "string | null",
+  "default_model": "string | null",
+  "default_vision_model": "string | null"
+}
+```
+
+### `OllamaLLMModelResponse`
+
+```json
+{
+  "name": "string",
+  "size": 0,
+  "modified_at": "datetime | null"
+}
+```
+
+### `OllamaVisionModelResponse`
+
+```json
+{
+  "name": "string",
+  "size": 0,
+  "modified_at": "datetime | null"
+}
+```
+
+### `LLMProvidersResponse`
+
+```json
+{
+  "providers": [
+    {
+      "name": "string",
+      "label": "string",
+      "available": true
+    }
+  ]
+}
+```
+
+### `LLMModelInfo`
+
+```json
+{
+  "id": "string",
+  "label": "string",
+  "supports_json_mode": true
 }
 ```
 

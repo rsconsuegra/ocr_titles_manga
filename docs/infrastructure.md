@@ -140,12 +140,19 @@ All env vars have sensible defaults for local development. Override as needed:
 | `DB_WORKER_POOL_SIZE` | `2` | Worker |
 | `DB_WORKER_MAX_OVERFLOW` | `0` | Worker |
 | `OCR_EXTRA` | `cpu` | Docker build arg for OCR dependency set |
+| `SERVER_SECRET` | (none, required) | Credential encryption key |
+| `OLLAMA_BASE_URL` | `` | Ollama instance URL |
+| `OLLAMA_API_KEY` | `ollama` | Ollama API key |
+| `OLLAMA_TIMEOUT` | `120` | Ollama request timeout |
+| `OLLAMA_DEFAULT_MODEL` | `llama3` | Default Ollama model |
+| `WORKER_THREADS` | `1` | Dramatiq worker threads |
+| `WORKER_PROCESSES` | `1` | Dramatiq worker processes |
 
 ---
 
 ## Configuration Files
 
-Three config files in `config/`:
+Four config files in `config/`:
 
 ### `config/configs.toml`
 
@@ -214,6 +221,19 @@ preprocessing:
     c: 2
 ```
 
+### `config/llm_models.yaml`
+
+LLM model definitions. Each model has `id`, `label`, and optional `supports_json_mode` (default true):
+
+```yaml
+models:
+  - id: google/gemini-2.5-flash
+    label: Gemini 2.5 Flash
+  - id: minimax/minimax-m2.5:free
+    label: MiniMax M2.5(free)
+    supports_json_mode: false
+```
+
 ---
 
 ## Python Dependencies
@@ -240,6 +260,7 @@ preprocessing:
 | `paddleocr` | PaddleOCR Python binding |
 | `easyocr` | EasyOCR Python binding |
 | `torch` | PyTorch (EasyOCR dependency) |
+| `cryptography` | Fernet symmetric encryption for API key storage |
 
 ### Development
 

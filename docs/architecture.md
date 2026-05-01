@@ -31,6 +31,27 @@ Manga OCR Title is a full-stack application for extracting manga titles from ima
 
 ---
 
+## Startup Sequence
+
+The API lifespan handler runs the following steps in order:
+
+```
+Application starts (uvicorn)
+  │
+  ├─ 1. Verify SERVER_SECRET env var is set (required for credential encryption)
+  │
+  ├─ 2. Run warmup_models() in a background executor thread
+  │     └─ Preloads all enabled OCR models into memory
+  │        (avoids cold-start latency on first request)
+  │
+  └─ 3. Start cache sweeper
+        └─ Hourly background task that evicts expired image cache entries
+```
+
+If `SERVER_SECRET` is missing, the application logs a warning and continues — credential encryption will not be available, and the system falls back to reading API keys from environment variables.
+
+---
+
 ## Processing Pipelines
 
 The system has **two distinct processing paths**:
@@ -139,27 +160,55 @@ Return QuickRunResponse (no DB persistence)
 ```
 ocr_manga_title/
 ├── api/                        # HTTP layer
-│   ├── app.py                  # FastAPI factory + exception handlers
+│   ├── app.py                  # FastAPI factory + exception handlers + lifespan
 │   ├── dependencies.py         # get_db(), get_config()
-│   ├── routes/                 # 9 route modules (33 endpoints)
-│   └── schemas/                # 9 Pydantic schema modules
+│   ├── routes/                 # 13 route modules (48 endpoints)
+│   │   ├── _helpers.py         # Shared route helpers
+│   │   ├── config/             # Configuration endpoints
+│   │   │   ├── catalog.py      # Catalog management
+│   │   │   ├── llm.py          # LLM configuration
+│   │   │   ├── ollama.py       # Ollama configuration
+│   │   │   ├── profiles.py     # Profile CRUD
+│   │   │   └── settings.py     # Global settings
+│   │   ├── pipeline/           # Pipeline execution endpoints
+│   │   │   ├── batches.py      # Batch operations
+│   │   │   ├── inputs.py       # Input upload/management
+│   │   │   ├── results.py      # Result retrieval
+│   │   │   ├── run.py          # Single run execution
+│   │   │   └── runs.py         # Run management/listing
+│   │   └── ocr/                # OCR-specific endpoints
+│   │       ├── models.py       # Model config CRUD
+│   │       ├── ocr.py          # OCR execution
+│   │       └── preprocess.py   # Preprocessing config
+│   └── schemas/                # 10 Pydantic schema modules
+│       ├── batch.py
+│       ├── catalog.py
+│       ├── models.py
+│       ├── ocr.py
+│       ├── ollama.py
+│       ├── pipeline.py
+│       ├── preprocess.py
+│       ├── profiles.py
+│       └── results.py
 ├── cli.py                      # Single-image CLI runner
 ├── config.py                   # Config file loaders (TOML, YAML)
 ├── db/                         # Data access layer
-│   ├── models.py               # 8 ORM models
-│   ├── crud.py                 # ~40 CRUD functions
+│   ├── models.py               # 10 ORM models
+│   ├── crud.py                 # ~30 CRUD functions
+│   ├── enums.py                # DB enum definitions
 │   └── session.py              # Async engine + session factory
 ├── engine/                     # OCR engine orchestration
 │   ├── base.py                 # BaseOCRModel ABC
-│   ├── registry.py             # MODEL_REGISTRY (4 models)
+│   ├── registry.py             # MODEL_REGISTRY (5 models)
 │   ├── ocr_engine.py           # OCREngine orchestrator
 │   ├── tesseract_model.py      # Tesseract adapter (production)
 │   ├── paddle_model.py         # PaddleOCR adapter (production)
 │   ├── easyocr_model.py        # EasyOCR adapter (production)
-│   └── glm_ocr_model.py       # Vision API adapter (production)
+│   ├── glm_ocr_model.py       # Vision API adapter (production)
+│   └── ollama_vision_model.py  # Ollama vision adapter (production)
 ├── exceptions.py               # Exception hierarchy
 ├── postprocess/                # Post-OCR processing
-│   ├── llm_extractor.py        # OpenRouter LLM extraction
+│   ├── llm_extractor.py        # LLM extraction (OpenRouter + Ollama)
 │   └── rule_matcher.py         # ISBN regex + title normalization
 ├── preprocess/                 # Image preprocessing
 │   ├── base.py                 # BasePreProcessor ABC
@@ -169,9 +218,14 @@ ocr_manga_title/
 ├── schemas.py                  # Core Pydantic models
 ├── services/                   # Business logic layer
 │   ├── config.py               # Profile snapshot builder
+│   ├── config_live.py          # Live config resolution
+│   ├── credentials.py          # Fernet encryption for API keys
+│   ├── profile_import.py       # Profile import/export as JSON
+│   ├── warmup.py               # Model preloading on startup
 │   ├── cache.py                # Content-addressable image cache
 │   ├── image.py                # Base64/numpy image encoding/decoding + multipart helpers
 │   ├── ocr.py                  # Model execution helpers
+│   ├── ollama.py               # Ollama provider client
 │   ├── pipeline.py             # Result persistence
 │   └── preprocess.py           # Step execution helper
 ├── settings.py                 # Environment variables + constants + cache settings
@@ -220,3 +274,13 @@ Each exception is handled by a global handler registered in `api/app.py` that re
 9. **Cooperative cancellation** — Worker checks DB for cancelled status at cooperative checkpoints. No thread interruption — graceful, DB-driven.
 
 10. **OOM pre-flight check** — Worker reads `/proc/meminfo` before OCREngine instantiation. Raises PermanentError if < 512MB available.
+
+11. **Encrypted credentials** — API keys are stored in the `api_credentials` table using Fernet symmetric encryption, with the encryption key derived from the `SERVER_SECRET` environment variable. At runtime, the system first queries the DB for a stored credential; if none exists, it falls back to the corresponding environment variable default. This allows per-instance credential management without requiring redeployment.
+
+12. **Dual LLM providers** — Both OpenRouter and Ollama are supported as LLM backends for post-OCR extraction. The provider is selected per-profile via the `llm_provider` field (`"openrouter"` or `"ollama"`). Each provider has its own client implementation (`postprocess/llm_extractor.py` delegates to `services/ollama.py` for Ollama calls).
+
+13. **Per-model JSON mode** — `config/llm_models.yaml` defines which LLM models support `response_format={"type": "json_object"}` via a `supports_json_mode` flag. Models with `supports_json_mode: false` are prompted in text mode, and the extractor parses the raw text response instead of expecting structured JSON. This accommodates models that don't reliably support JSON output.
+
+14. **Model warmup** — On API startup, `warmup_models()` runs in a background executor thread to preload all enabled OCR models into memory. This eliminates cold-start latency on the first request. The warmup happens concurrently with the server accepting connections.
+
+15. **Profile import/export** — Profiles can be exported to and imported from JSON files. Import validates the profile data against current model and preprocessing step registries, rejecting profiles that reference unknown models or steps. This enables sharing configurations across instances.
