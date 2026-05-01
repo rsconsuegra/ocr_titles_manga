@@ -2,7 +2,9 @@ import asyncio
 import logging
 import threading
 import uuid
+from collections.abc import Callable, Coroutine
 from pathlib import Path
+from typing import Any
 
 import dramatiq
 from sqlalchemy import select
@@ -18,9 +20,8 @@ from ocr_manga_title.db.crud import list_model_configs, update_batch_progress
 from ocr_manga_title.db.enums import RunStatus
 from ocr_manga_title.db.models import PipelineRun
 from ocr_manga_title.engine import OCREngine
-from ocr_manga_title.schemas import utcnow
 from ocr_manga_title.exceptions import PermanentError
-from ocr_manga_title.schemas import ModelConfig as ModelConfigSchema
+from ocr_manga_title.schemas import ModelConfig as ModelConfigSchema, OCRResult, utcnow
 from ocr_manga_title.services.cache import hash_bytes, hash_config, put_ocr_result
 from ocr_manga_title.services.ocr import build_model_config
 from ocr_manga_title.services.pipeline import save_pipeline_results
@@ -43,11 +44,16 @@ _MAX_ERROR_LENGTH = 1000
 
 _worker_engine = None
 _worker_session_factory = None
+_worker_lock = threading.Lock()
 
 
-def _get_worker_session_factory() -> async_sessionmaker:
+def _get_worker_session_factory() -> async_sessionmaker[AsyncSession]:
     global _worker_engine, _worker_session_factory
-    if _worker_session_factory is None:
+    if _worker_session_factory is not None:
+        return _worker_session_factory
+    with _worker_lock:
+        if _worker_session_factory is not None:
+            return _worker_session_factory
         _worker_engine = create_async_engine(
             DATABASE_URL,
             echo=False,
@@ -81,7 +87,9 @@ def _require_memory(context: str) -> None:
         )
 
 
-class RunCancelled(Exception):
+class RunCancelledError(Exception):
+    """Raised when a pipeline run has been cancelled by the user."""
+
     pass
 
 
@@ -90,7 +98,7 @@ async def _check_cancelled(session: AsyncSession, run_id: uuid.UUID) -> None:
     result = await session.execute(stmt)
     run = result.scalar_one_or_none()
     if run and run.status == RunStatus.CANCELLED:
-        raise RunCancelled(f"Run {run_id} was cancelled")
+        raise RunCancelledError(f"Run {run_id} was cancelled")
 
 
 _loop_local = threading.local()
@@ -104,7 +112,7 @@ def _get_event_loop() -> asyncio.AbstractEventLoop:
     return loop
 
 
-def _run_async(coro):
+def _run_async[T](coro: Callable[[async_sessionmaker[AsyncSession]], Coroutine[Any, Any, T]]) -> T:
     sf = _get_worker_session_factory()
     return _get_event_loop().run_until_complete(coro(sf))
 
@@ -124,14 +132,16 @@ async def _get_model_configs(session: AsyncSession) -> dict[str, ModelConfigSche
         configs[name] = ModelConfigSchema(
             name=name,
             enabled=True,
-            language="",
-            parameters=cfg.parameters,
+            parameters={
+                "language": "",
+                **cfg.parameters,
+            },
         )
     return configs
 
 
 def _build_model_configs_from_snapshot(
-    ocr_models: dict,
+    ocr_models: dict[str, Any],
 ) -> dict[str, ModelConfigSchema]:
     configs: dict[str, ModelConfigSchema] = {}
     for model_name, override in ocr_models.items():
@@ -143,7 +153,7 @@ def _build_model_configs_from_snapshot(
     return configs
 
 
-def _build_preprocess_raw(preprocess_steps: dict) -> dict:
+def _build_preprocess_raw(preprocess_steps: dict[str, Any]) -> dict[str, Any]:
     if not preprocess_steps:
         return {"preprocessing": {"enabled": False}}
     return {"preprocessing": {"enabled": True, "steps": preprocess_steps}}
@@ -151,7 +161,7 @@ def _build_preprocess_raw(preprocess_steps: dict) -> dict:
 
 async def _resolve_run_config(
     session: AsyncSession, run: PipelineRun
-) -> tuple:
+) -> tuple[Any, ...]:
     app_config = load_config(CONFIG_PATH)
     if run.preprocess_config:
         snapshot = run.preprocess_config
@@ -175,12 +185,12 @@ async def _resolve_run_config(
 
 async def _cache_ocr_results(
     session: AsyncSession,
-    ocr_results,
-    ocr_models_snapshot: dict,
+    ocr_results: list[OCRResult],
+    ocr_models_snapshot: dict[str, Any],
     image_hash: str,
 ) -> None:
     try:
-        from ocr_manga_title.api.schemas.ocr import OCRResultData
+        from ocr_manga_title.api.schemas.ocr import OCRResultData, TextBlockData
 
         for ocr_res in ocr_results:
             if ocr_res.error:
@@ -199,7 +209,7 @@ async def _cache_ocr_results(
                     processing_time_ms=ocr_res.processing_time_ms,
                     error=ocr_res.error,
                     blocks=[
-                        {"bbox": b.bbox, "text": b.text, "confidence": b.confidence}
+                        TextBlockData(bbox=b.bbox, text=b.text, confidence=b.confidence)
                         for b in ocr_res.blocks
                     ] if ocr_res.blocks else None,
                 ),
@@ -234,7 +244,8 @@ async def _mark_run_failed(run_id: str, error_message: str) -> None:
     max_backoff=60000,
     time_limit=900000,
 )
-def process_pipeline_run(run_id: str):
+def process_pipeline_run(run_id: str) -> None:
+    """Dramatiq actor that executes a single pipeline run."""
     try:
         _run_async(lambda sf: _process(run_id, sf))
     except Exception as e:
@@ -261,7 +272,7 @@ async def _finalize_run(
     await session.commit()
 
 
-async def _process(run_id: str, session_factory: async_sessionmaker):
+async def _process(run_id: str, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         try:
             run_uuid = uuid.UUID(run_id)
@@ -316,7 +327,7 @@ async def _process(run_id: str, session_factory: async_sessionmaker):
             await _finalize_run(session, run, RunStatus.COMPLETED)
             logger.info("Pipeline run %s completed successfully", run_id)
 
-        except RunCancelled:
+        except RunCancelledError:
             await _finalize_run(session, run, RunStatus.CANCELLED)
             logger.info("Pipeline run %s cancelled", run_id)
 

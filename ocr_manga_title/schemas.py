@@ -34,7 +34,13 @@ class OpenRouterConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_api_key_prefix(self) -> "OpenRouterConfig":
-        if "openrouter.ai" in self.base_url and not self.api_key.get_secret_value().startswith(OPENROUTER_API_KEY_PREFIX):
+        """Ensure API key has the expected prefix for OpenRouter."""
+        if (
+            "openrouter.ai" in self.base_url
+            and not self.api_key.get_secret_value().startswith(
+                OPENROUTER_API_KEY_PREFIX
+            )
+        ):
             raise ConfigurationError(
                 f"API key must start with '{OPENROUTER_API_KEY_PREFIX}'",
                 field_name="api_key",
@@ -63,18 +69,23 @@ class LLMPromptConfig(BaseModel):
     reasoning_enabled: bool = False
 
     def render_user_prompt(self, ocr_text: str) -> str:
+        """Render the user prompt template with OCR text."""
         trimmed = ocr_text[:self.max_ocr_chars] if self.max_ocr_chars > 0 else ocr_text
         return self.user_prompt_template.replace("{ocr_text}", trimmed)
 
     @classmethod
-    def from_dict(cls, llm_config: dict | None) -> "LLMPromptConfig | None":
+    def from_dict(cls, llm_config: dict[str, Any] | None) -> "LLMPromptConfig | None":
+        """Construct from a raw dict (e.g. stored config snapshot)."""
         if not llm_config:
             return None
         system_prompt = llm_config.get("system_prompt", "")
         if not system_prompt:
             from pathlib import Path
 
-            prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "llm" / "extract_title_v1.md"
+            prompt_path = (
+                Path(__file__).resolve().parent.parent
+                / "prompts" / "llm" / "extract_title_v1.md"
+            )
             try:
                 system_prompt = prompt_path.read_text().strip()
             except FileNotFoundError:
@@ -112,7 +123,7 @@ class ModelConfig(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def _resolve_key_alias(cls, data: dict) -> dict:
+    def _resolve_key_alias(cls, data: dict[str, Any]) -> dict[str, Any]:
         if "__key__" in data:
             if "name" not in data:
                 data["name"] = data.pop("__key__")
@@ -226,6 +237,7 @@ class ExtractedTitle(BaseModel):
     source_model: str | None = None
     source_method: str = "unknown"
     raw_response: str | None = None
+    extra_metadata: dict[str, Any] | None = None
 
     @field_validator("confidence")
     @classmethod

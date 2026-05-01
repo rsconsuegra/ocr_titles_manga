@@ -110,19 +110,13 @@ class TestOCREngineProcess:
             engine._models.append(m)
         return engine
 
-    @patch("openai.OpenAI")
+    @patch("ocr_manga_title.engine.ocr_engine.extract_title_from_text")
     def test_process_returns_pipeline_result(
-        self, mock_openai_cls, tmp_path, blank_image
+        self, mock_extract, tmp_path, blank_image
     ):
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[
-            0
-        ].message.content = '{"title_en": "One Piece", "confidence": 0.9}'
-        mock_response.usage = None
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai_cls.return_value = mock_client
+        mock_extract.return_value = ExtractedTitle(
+            title_en="One Piece", confidence=0.9, source_method="llm",
+        )
 
         engine = self._make_engine_with_mocks(tmp_path)
         result = engine.process(blank_image)
@@ -240,14 +234,12 @@ class TestOCREngineProcess:
         with pytest.raises(ValueError, match="Unsupported"):
             engine.process(str(txt_file))
 
-    @patch("ocr_manga_title.engine.ocr_engine.LLMExtractor")
+    @patch("ocr_manga_title.engine.ocr_engine.extract_title_from_text")
     @patch("ocr_manga_title.engine.ocr_engine.RuleMatcher")
     def test_process_runs_llm_on_each_result(
-        self, mock_rule_cls, mock_llm_cls, tmp_path, blank_image
+        self, mock_rule_cls, mock_extract, tmp_path, blank_image
     ):
-        mock_llm = MagicMock()
-        mock_llm.extract.return_value = ExtractedTitle(confidence=0.5)
-        mock_llm_cls.return_value = mock_llm
+        mock_extract.return_value = ExtractedTitle(confidence=0.5)
         mock_rule = MagicMock()
         mock_rule.augment.side_effect = lambda e, t: e
         mock_rule_cls.return_value = mock_rule
@@ -262,16 +254,14 @@ class TestOCREngineProcess:
         ]
         engine = self._make_engine_with_mocks(tmp_path, mock_results=results)
         engine.process(blank_image)
-        assert mock_llm.extract.call_count == 1
+        assert mock_extract.call_count == 1
 
-    @patch("ocr_manga_title.engine.ocr_engine.LLMExtractor")
+    @patch("ocr_manga_title.engine.ocr_engine.extract_title_from_text")
     @patch("ocr_manga_title.engine.ocr_engine.RuleMatcher")
     def test_process_runs_rules_on_each_result(
-        self, mock_rule_cls, mock_llm_cls, tmp_path, blank_image
+        self, mock_rule_cls, mock_extract, tmp_path, blank_image
     ):
-        mock_llm = MagicMock()
-        mock_llm.extract.return_value = ExtractedTitle(confidence=0.5)
-        mock_llm_cls.return_value = mock_llm
+        mock_extract.return_value = ExtractedTitle(confidence=0.5)
         mock_rule = MagicMock()
         mock_rule.augment.side_effect = lambda e, t: e
         mock_rule_cls.return_value = mock_rule
@@ -335,31 +325,13 @@ class TestOCREngineProcess:
         assert len(result.ocr_results) == 1
         assert result.ocr_results[0].model_name == "tesseract"
 
-    @patch("openai.OpenAI")
+    @patch("ocr_manga_title.engine.ocr_engine.extract_title_from_text")
     def test_process_selects_best_confidence(
-        self, mock_openai_cls, tmp_path, blank_image
+        self, mock_extract, tmp_path, blank_image
     ):
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.usage = None
-
-        call_count = [0]
-
-        def side_effect(**kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                mock_response.choices[
-                    0
-                ].message.content = '{"title_en": "Low", "confidence": 0.3}'
-            else:
-                mock_response.choices[
-                    0
-                ].message.content = '{"title_en": "High", "confidence": 0.9}'
-            return mock_response
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.side_effect = side_effect
-        mock_openai_cls.return_value = mock_client
+        mock_extract.return_value = ExtractedTitle(
+            title_en="High", confidence=0.9, source_method="llm",
+        )
 
         results = [
             OCRResult(
@@ -378,6 +350,8 @@ class TestOCREngineProcess:
         engine = self._make_engine_with_mocks(tmp_path, mock_results=results)
         result = engine.process(blank_image)
         assert result.extracted.title_en == "High"
+        assert mock_extract.call_count == 1
+        assert mock_extract.call_args[0][0] == "text2"
 
 
 class TestOCREnginePreprocessing:

@@ -5,14 +5,12 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
-
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Self
 
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.engine.registry import MODEL_REGISTRY
-from ocr_manga_title.exceptions import LLMExtractionError
-from ocr_manga_title.postprocess.llm_extractor import LLMExtractor
 from ocr_manga_title.postprocess.rule_matcher import RuleMatcher
 from ocr_manga_title.schemas import (
     AppConfig,
@@ -22,12 +20,13 @@ from ocr_manga_title.schemas import (
     OCRResult,
     PipelineResult,
 )
+from ocr_manga_title.services.ocr import extract_title_from_text, pick_best_ocr
 from ocr_manga_title.settings import ALLOWED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
 
-def _build_prompt_config(llm_config: dict | None) -> LLMPromptConfig:
+def _build_prompt_config(llm_config: dict[str, Any] | None) -> LLMPromptConfig | None:
     return LLMPromptConfig.from_dict(llm_config)
 
 
@@ -35,7 +34,7 @@ class OCREngine:
     """Orchestrates OCR model execution, LLM extraction, and rule-based post-processing.
 
     Given an application config and per-model config, the engine initializes all
-    enabled and available OCR models, then for each image runs them in parallel,
+    enabled and available OCR models, then for each image runs them sequentially,
     feeds raw text through the LLM extractor and rule matcher, and returns the
     best extracted title.
     """
@@ -46,22 +45,16 @@ class OCREngine:
         self,
         config: AppConfig,
         ocr_config: dict[str, ModelConfig],
-        preprocess_config: dict | None = None,
-        llm_config: dict | None = None,
+        preprocess_config: dict[str, Any] | None = None,
+        llm_config: dict[str, Any] | None = None,
     ):
         self._config = config
         self._ocr_config = ocr_config
         self._models: list[BaseOCRModel] = self._initialize_models()
         self._prompt_config = _build_prompt_config(llm_config)
-        self._llm_extractor = LLMExtractor(
-            openrouter_config=config.openrouter if config.llm_provider == "openrouter" else None,
-            ollama_config=config.ollama if config.llm_provider == "ollama" else None,
-            provider=config.llm_provider,
-            prompt_config=self._prompt_config,
-        )
         self._rule_matcher = RuleMatcher()
         self._preprocess_pipeline = None
-        self._temp_dir: tempfile.TemporaryDirectory | None = None
+        self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
         if preprocess_config:
             pp_settings = preprocess_config.get("preprocessing", {})
@@ -157,37 +150,65 @@ class OCREngine:
 
         return ocr_results, errors
 
+    def _extract_single(
+        self,
+        result: OCRResult,
+        errors: list[str],
+    ) -> ExtractedTitle | None:
+        effective_model = self._prompt_config.llm_model if self._prompt_config else None
+        llm_start = time.monotonic()
+        try:
+            logger.info("LLM extraction started for model '%s'", result.model_name)
+            extracted = extract_title_from_text(
+                result.raw_text,
+                provider=self._config.llm_provider,
+                llm_model=effective_model,
+                prompt_config=self._prompt_config,
+            )
+            llm_ms = int((time.monotonic() - llm_start) * 1000)
+            logger.info("LLM extraction finished for model '%s' in %dms", result.model_name, llm_ms)
+        except Exception as e:
+            llm_ms = int((time.monotonic() - llm_start) * 1000)
+            errors.append(f"LLM extraction failed for {result.model_name}: {e}")
+            logger.error("LLM extraction failed for %s in %dms: %s", result.model_name, llm_ms, e)
+            return None
+
+        try:
+            extracted = self._rule_matcher.augment(extracted, result.raw_text)
+        except (ValueError, AttributeError) as e:
+            errors.append(f"Rule matching failed for {result.model_name}: {e}")
+            logger.error("Rule matching failed for %s: %s", result.model_name, e)
+
+        return extracted
+
     def _llm_extract_from_results(
+        self,
+        ocr_results: list[OCRResult],
+        errors: list[str],
+        *,
+        strategy: str = "best_ocr",
+    ) -> list[ExtractedTitle]:
+        if strategy == "all_ocr":
+            return self._llm_extract_all(ocr_results, errors)
+
+        best = pick_best_ocr(ocr_results)
+        if best is None:
+            return []
+        extracted = self._extract_single(best, errors)
+        return [extracted] if extracted else []
+
+    def _llm_extract_all(
         self,
         ocr_results: list[OCRResult],
         errors: list[str],
     ) -> list[ExtractedTitle]:
         extracted_titles: list[ExtractedTitle] = []
-
         for result in ocr_results:
             if result.error is not None or not result.raw_text.strip():
                 continue
-
-            llm_start = time.monotonic()
-            try:
-                logger.info("LLM extraction started for model '%s'", result.model_name)
-                extracted = self._llm_extractor.extract(result.raw_text)
-                llm_ms = int((time.monotonic() - llm_start) * 1000)
-                logger.info("LLM extraction finished for model '%s' in %dms", result.model_name, llm_ms)
-            except LLMExtractionError as e:
-                llm_ms = int((time.monotonic() - llm_start) * 1000)
-                errors.append(f"LLM extraction failed for {result.model_name}: {e}")
-                logger.error("LLM extraction failed for %s in %dms: %s", result.model_name, llm_ms, e)
-                continue
-
-            try:
-                extracted = self._rule_matcher.augment(extracted, result.raw_text)
-            except (ValueError, AttributeError) as e:
-                errors.append(f"Rule matching failed for {result.model_name}: {e}")
-                logger.error("Rule matching failed for %s: %s", result.model_name, e)
-
-            extracted_titles.append(extracted)
-
+            extracted = self._extract_single(result, errors)
+            if extracted:
+                extracted_titles.append(extracted)
         return extracted_titles
 
     def _fallback_rule_match(
@@ -237,6 +258,7 @@ class OCREngine:
 
         Args:
             image_path: Path to the image file to process.
+            enable_llm: Whether to run LLM post-processing on the OCR text.
 
         Returns:
             :class:`~ocr_manga_title.schemas.PipelineResult` containing all OCR results,
@@ -295,7 +317,7 @@ class OCREngine:
             input_path=str(image_path),
             ocr_results=ocr_results,
             extracted=best,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
             errors=errors,
             preprocess_result=preprocess_result,
         )
@@ -306,9 +328,8 @@ class OCREngine:
             self._temp_dir.cleanup()
             self._temp_dir = None
 
-    def __enter__(self):  # noqa: D105
+    def __enter__(self) -> Self:  # noqa: D105
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):  # noqa: D105
+    def __exit__(self, *args: Any) -> None:  # noqa: D105
         self.cleanup()
-        return False

@@ -50,7 +50,17 @@ _FIELD_ALIASES: dict[str, str] = {
     "sauce": "code",
     "source_id": "code",
     "nhentai_code": "code",
+    "artist": "author",
+    "creator": "author",
+    "writer": "author",
+    "page_name": "social_page",
+    "page": "social_page",
+    "handle": "social_page",
+    "account": "social_page",
+    "channel": "social_page",
 }
+
+_CORE_FIELDS = {"title_en", "title_ja", "code", "confidence"}
 
 
 class LLMExtractor:
@@ -107,14 +117,23 @@ class LLMExtractor:
             logger.warning("Prompt file not found: %s, using fallback", self._prompt_path)
             return _FALLBACK_PROMPT
 
-    def extract(self, raw_text: str, model: str | None = None, *, supports_json_mode: bool = True) -> ExtractedTitle:
+    def extract(self, raw_text: str, model: str | None = None) -> ExtractedTitle:
         """Send raw OCR text to the LLM and parse the structured response."""
         if self._provider == "ollama":
             return self._extract_ollama(raw_text, model)
-        return self._extract_openrouter(raw_text, model, supports_json_mode=supports_json_mode)
+        return self._extract_openrouter(raw_text, model)
+
+    def _resolve_json_support(self, model: str) -> bool:
+        if self._provider != "openrouter":
+            return True
+        from ocr_manga_title.config import load_openrouter_models
+
+        models_list = load_openrouter_models()
+        model_info = next((m for m in models_list if m.get("id") == model), {})
+        return bool(model_info.get("supports_json_mode", True))
 
     def _extract_openrouter(
-        self, raw_text: str, model: str | None = None, *, supports_json_mode: bool = True
+        self, raw_text: str, model: str | None = None,
     ) -> ExtractedTitle:
         import openai as _openai
 
@@ -122,6 +141,7 @@ class LLMExtractor:
             raise LLMExtractionError("OpenRouter client not initialized")
 
         model = model or self._model
+        supports_json_mode = self._resolve_json_support(model)
         start = time.monotonic()
         temperature = self._prompt_config.temperature if self._prompt_config else 0.1
         user_content = (
@@ -262,6 +282,7 @@ class LLMExtractor:
             )
 
         normalized = self._normalize_keys(parsed)
+        extra = {k: v for k, v in normalized.items() if k not in _CORE_FIELDS and v is not None} or None
         return ExtractedTitle(
             title_en=normalized.get("title_en"),
             title_ja=normalized.get("title_ja"),
@@ -270,6 +291,7 @@ class LLMExtractor:
             source_model=model,
             source_method="llm",
             raw_response=content,
+            extra_metadata=extra,
         )
 
     @staticmethod
@@ -278,14 +300,14 @@ class LLMExtractor:
 
     def _parse_json(self, content: str) -> dict[str, Any] | None:
         try:
-            return json.loads(content)
+            return json.loads(content)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             pass
 
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(1))
+                return json.loads(match.group(1))  # type: ignore[no-any-return]
             except json.JSONDecodeError:
                 pass
 

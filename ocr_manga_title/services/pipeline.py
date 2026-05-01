@@ -1,6 +1,8 @@
 """Pipeline result persistence — shared by worker and future direct-run endpoints."""
 
+import logging
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,13 +15,15 @@ from ocr_manga_title.db.models import (
 )
 from ocr_manga_title.schemas import PipelineResult
 
+logger = logging.getLogger(__name__)
+
 
 async def save_pipeline_results(
     session: AsyncSession,
     run_id: uuid.UUID,
     pipeline_result: PipelineResult,
     *,
-    llm_config: dict | None = None,
+    llm_config: dict[str, Any] | None = None,
 ) -> None:
     """Persist OCR results, post-processing results, and catalog entry."""
     for ocr_result in pipeline_result.ocr_results:
@@ -36,7 +40,7 @@ async def save_pipeline_results(
             blocks=blocks_data,
         )
         session.add(ocr_db)
-        await session.flush()
+    await session.flush()
 
     if pipeline_result.extracted:
         best_ocr = None
@@ -51,11 +55,11 @@ async def save_pipeline_results(
                 OCRResultDB.model_name == best_ocr.model_name,
             )
             r = await session.execute(stmt)
-            ocr_db = r.scalars().first()
+            found_ocr: OCRResultDB | None = r.scalars().first()
 
-            if ocr_db:
-                pp_kwargs: dict = {
-                    "ocr_result_id": ocr_db.id,
+            if found_ocr:
+                pp_kwargs: dict[str, Any] = {
+                    "ocr_result_id": found_ocr.id,
                     "title_en": pipeline_result.extracted.title_en,
                     "title_ja": pipeline_result.extracted.title_ja,
                     "code": pipeline_result.extracted.code,
@@ -63,6 +67,7 @@ async def save_pipeline_results(
                     "processing_type": pipeline_result.extracted.source_method
                     or "unknown",
                     "raw_response": pipeline_result.extracted.raw_response,
+                    "extra_metadata": pipeline_result.extracted.extra_metadata,
                 }
                 if llm_config:
                     pp_kwargs["system_prompt_used"] = llm_config.get("system_prompt", "")
@@ -85,7 +90,7 @@ async def save_pipeline_results(
 async def override_and_sync(
     session: AsyncSession,
     result_id: uuid.UUID,
-    updates: dict,
+    updates: dict[str, Any],
 ) -> PostProcessingResult | None:
     """Override post-processing result fields and propagate to catalog."""
     from ocr_manga_title.db.crud import get_catalog_entry_by_run
@@ -106,7 +111,13 @@ async def override_and_sync(
     await session.flush()
 
     stmt_ocr = select(OCRResultDB).where(OCRResultDB.id == pp_result.ocr_result_id)
-    ocr_result = (await session.execute(stmt_ocr)).scalar_one()
+    ocr_result = (await session.execute(stmt_ocr)).scalar_one_or_none()
+    if ocr_result is None:
+        logger.warning(
+            "OCR result not found for pp_result.ocr_result_id=%s",
+            pp_result.ocr_result_id,
+        )
+        return None
     catalog = await get_catalog_entry_by_run(session, ocr_result.pipeline_run_id)
     if catalog:
         if updates.get("title_en") is not None:

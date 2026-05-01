@@ -2,14 +2,50 @@
 
 import logging
 import time
+from typing import Any
 
 from ocr_manga_title.api.schemas.ocr import LLMResultData, OCRResultData, TextBlockData
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
+from ocr_manga_title.schemas import ExtractedTitle, OCRResult
+from ocr_manga_title.settings import CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 
 
-def build_model_config(model_name: str, overrides: dict) -> tuple | None:
+def pick_best_ocr(results: list[OCRResult]) -> OCRResult | None:
+    """Return highest-confidence result with non-empty text and no error."""
+    return next(
+        (
+            r
+            for r in sorted(results, key=lambda r: r.confidence, reverse=True)
+            if r.raw_text.strip() and not r.error
+        ),
+        None,
+    )
+
+
+def pick_best_ocr_data(results: list[OCRResultData]) -> OCRResultData | None:
+    """Return highest-confidence OCRResultData with non-empty text and no error."""
+    return next(
+        (
+            r
+            for r in sorted(results, key=lambda r: r.confidence, reverse=True)
+            if r.raw_text.strip() and not r.error
+        ),
+        None,
+    )
+
+
+def _parse_languages(languages: str | list[str]) -> list[str]:
+    """Normalize language parameter to a list."""
+    if isinstance(languages, str):
+        return languages.split("+") if "+" in languages else [languages]
+    return languages
+
+
+def build_model_config(
+    model_name: str, overrides: dict[str, Any]
+) -> tuple[Any, Any] | None:
     """Merge registry defaults with user overrides into a (ModelConfig, model_cls) tuple.
 
     Returns ``None`` if the model is not in the registry.
@@ -24,14 +60,12 @@ def build_model_config(model_name: str, overrides: dict) -> tuple | None:
     merged_params.update(overrides)
 
     languages = merged_params.pop("languages", "eng")
-    if isinstance(languages, str) and "+" in languages:
-        languages = languages.split("+")
+    languages = _parse_languages(languages)
 
     config = ModelConfig(
         name=model_name,
         enabled=True,
-        language=languages,
-        parameters=merged_params,
+        parameters={**merged_params, "language": languages},
     )
     return config, descriptor.model_cls
 
@@ -39,7 +73,7 @@ def build_model_config(model_name: str, overrides: dict) -> tuple | None:
 def run_single_model(
     model_name: str,
     image_path: str,
-    overrides: dict | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> OCRResultData:
     """Instantiate and run a single OCR model.
 
@@ -95,7 +129,7 @@ def run_single_model(
 
 def run_all_enabled_models(
     image_path: str,
-    ocr_config: dict,
+    ocr_config: dict[str, Any],
 ) -> list[OCRResultData]:
     """Run all enabled OCR models on an image.
 
@@ -121,12 +155,42 @@ def run_all_enabled_models(
     return results
 
 
+def extract_title_from_text(
+    raw_text: str,
+    *,
+    provider: str,
+    llm_model: str | None = None,
+    prompt_config: Any | None = None,
+) -> ExtractedTitle:
+    """Core LLM extraction — creates extractor, calls extract, returns ExtractedTitle.
+
+    This is the single source of truth for LLM post-processing.
+    Both the API routes and OCREngine delegate to this function.
+    """
+    from ocr_manga_title.config import load_config
+    from ocr_manga_title.postprocess.llm_extractor import LLMExtractor
+
+    config = load_config(CONFIG_PATH)
+
+    extractor = LLMExtractor(
+        openrouter_config=config.openrouter if provider == "openrouter" else None,
+        ollama_config=config.ollama if provider == "ollama" else None,
+        provider=provider,
+        prompt_config=prompt_config,
+    )
+    effective_model = llm_model
+    if not effective_model and prompt_config and prompt_config.llm_model:
+        effective_model = prompt_config.llm_model
+
+    return extractor.extract(raw_text, model=effective_model)
+
+
 def run_llm_extraction(
     raw_text: str,
     *,
     provider: str | None = None,
     llm_model: str | None = None,
-    llm_config: dict | None = None,
+    llm_config: dict[str, Any] | None = None,
 ) -> LLMResultData:
     """Run LLM extraction on raw OCR text.
 
@@ -135,32 +199,21 @@ def run_llm_extraction(
     Returns :class:`LLMResultData` (or failure placeholder).
     """
     try:
-        from ocr_manga_title.config import load_config, load_openrouter_models
-        from ocr_manga_title.postprocess.llm_extractor import LLMExtractor
+        from ocr_manga_title.config import load_config
         from ocr_manga_title.schemas import LLMPromptConfig
 
-        config = load_config("config/configs.toml")
+        config = load_config(CONFIG_PATH)
         effective_provider = provider or config.llm_provider
-
         prompt_config = LLMPromptConfig.from_dict(llm_config)
 
-        extractor = LLMExtractor(
-            openrouter_config=config.openrouter if effective_provider == "openrouter" else None,
-            ollama_config=config.ollama if effective_provider == "ollama" else None,
+        llm_start = time.monotonic()
+        logger.info("LLM extraction started (provider=%s, model=%s)", effective_provider, llm_model)
+        extracted = extract_title_from_text(
+            raw_text,
             provider=effective_provider,
+            llm_model=llm_model,
             prompt_config=prompt_config,
         )
-        llm_start = time.monotonic()
-        effective_model = llm_model
-        if not effective_model and prompt_config and prompt_config.llm_model:
-            effective_model = prompt_config.llm_model
-        logger.info("LLM extraction started (provider=%s, model=%s)", effective_provider, effective_model)
-        supports_json = True
-        if effective_model and effective_provider == "openrouter":
-            models_list = load_openrouter_models()
-            model_info = next((m for m in models_list if m.get("id") == effective_model), {})
-            supports_json = model_info.get("supports_json_mode", True)
-        extracted = extractor.extract(raw_text, model=effective_model, supports_json_mode=supports_json)
         llm_ms = int((time.monotonic() - llm_start) * 1000)
         logger.info("LLM extraction finished in %dms", llm_ms)
         return LLMResultData(
@@ -170,6 +223,7 @@ def run_llm_extraction(
             confidence=extracted.confidence,
             source_method=extracted.source_method,
             raw_response=extracted.raw_response,
+            extra_metadata=extracted.extra_metadata,
         )
     except Exception:
         logger.warning("LLM extraction failed", exc_info=True)
@@ -188,15 +242,14 @@ def check_model_availability(model_name: str) -> bool:
         cfg = ModelConfig(
             name=model_name,
             enabled=True,
-            language="eng",
-            parameters=(
-                {
-                    k: v.default
-                    for k, v in {p.name: p for p in descriptor.params}.items()
-                }
-                if descriptor.params
-                else {}
-            ),
+            parameters={
+                "language": "eng",
+                **(
+                    {p.name: p.default for p in descriptor.params}
+                    if descriptor.params
+                    else {}
+                ),
+            },
         )
         instance = descriptor.model_cls(cfg)
         return instance.is_available

@@ -72,6 +72,7 @@ class LLMResultData(BaseModel):
     confidence: float = 0.0
     source_method: str = "llm"
     raw_response: str | None = None
+    extra_metadata: dict[str, Any] | None = None
 
 
 class OCRRunResponse(BaseModel):

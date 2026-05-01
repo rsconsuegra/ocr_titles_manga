@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -46,7 +48,7 @@ class PipelineRun(Base):
     source_platform: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=RunStatus.PENDING)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    preprocess_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    preprocess_config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     batch_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("batch_runs.id"), nullable=True
     )
@@ -82,7 +84,7 @@ class OCRResult(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     processing_time_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    blocks: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    blocks: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="ocr_results")
@@ -114,6 +116,7 @@ class PostProcessingResult(Base):
     user_prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     temperature_used: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     ocr_result: Mapped["OCRResult"] = relationship(
@@ -169,11 +172,11 @@ class PipelineProfile(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    preprocess_steps: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    ocr_models: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    preprocess_steps: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    ocr_models: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     enable_llm: Mapped[bool] = mapped_column(Boolean, default=False)
     llm_provider: Mapped[str] = mapped_column(String(20), default="openrouter")
-    llm_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    llm_config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
@@ -191,7 +194,7 @@ class ModelConfig(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     model_name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    parameters: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    parameters: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     language_hint: Mapped[str | None] = mapped_column(String(50), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
@@ -208,7 +211,7 @@ class ImageCache(Base):
     config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     cache_type: Mapped[str] = mapped_column(String(20), nullable=False)
     result_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    result_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    result_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
 

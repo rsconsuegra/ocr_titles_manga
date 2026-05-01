@@ -70,8 +70,10 @@ class TestLLMExtractor:
         mock_openai_cls.return_value = mock_client
 
         extractor = LLMExtractor(openrouter_config=_make_config(), provider="openrouter")
-        with pytest.raises(LLMExtractionError):
-            extractor.extract("text")
+        result = extractor.extract("text")
+        assert result.title_en is None
+        assert result.confidence == 0.0
+        assert result.source_method == "llm_unparsed"
 
     @patch("openai.OpenAI")
     def test_llm_extract_json_in_markdown(self, mock_openai_cls):

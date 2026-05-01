@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -14,6 +15,7 @@ class PostProcessingResultResponse(BaseModel):
     confidence: float
     processing_type: str
     raw_response: str | None = None
+    extra_metadata: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
