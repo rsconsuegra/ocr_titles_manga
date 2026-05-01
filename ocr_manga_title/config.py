@@ -10,6 +10,7 @@ import logging
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -131,7 +132,7 @@ def load_ocr_config(
     return models
 
 
-def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> dict:
+def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> dict[str, Any]:
     """Load preprocessing configuration from a YAML file.
 
     Returns a raw dict for flexibility — individual step classes access their own keys.
@@ -172,7 +173,14 @@ def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> 
 @functools.lru_cache(maxsize=1)
 def load_openrouter_models(
     config_path: str | Path = LLM_MODELS_PATH,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
+    """Load available LLM models from the YAML config.
+
+    Returns:
+        List of dicts with ``id``, ``label``, and optional
+        ``supports_json_mode`` keys.
+
+    """
     config_path = Path(config_path)
     if not config_path.exists():
         return []
@@ -205,10 +213,10 @@ class ResolvedModelConfig:
 
     name: str
     enabled: bool
-    parameters: dict
+    parameters: dict[str, Any]
 
 
-def resolve_model_configs(db_overrides: dict[str, dict]) -> dict[str, ResolvedModelConfig]:
+def resolve_model_configs(db_overrides: dict[str, dict[str, Any]]) -> dict[str, ResolvedModelConfig]:
     """Merge registry defaults, YAML config, and DB overrides into final configs.
 
     Resolution order (later wins):

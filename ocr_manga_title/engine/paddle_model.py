@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import threading
 import time
+from typing import Any
 
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
@@ -32,7 +33,7 @@ _init_lock = threading.Lock()
 class PaddleModel(BaseOCRModel):
     """OCR adapter for PaddleOCR with lazy model loading and configurable languages."""
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig) -> None:
         self._config = config
         self._ocr = None
         self._detailed = config.parameters.get("detailed", False)
@@ -47,7 +48,7 @@ class PaddleModel(BaseOCRModel):
         """Whether the PaddleOCR package is installed and importable."""
         return importlib.util.find_spec("paddleocr") is not None
 
-    def _load_model(self):
+    def _load_model(self) -> Any:
         if self._ocr is not None:
             return self._ocr
         with _init_lock:
@@ -84,6 +85,7 @@ class PaddleModel(BaseOCRModel):
             return self._ocr
 
     def warmup(self) -> None:
+        """Pre-load the PaddleOCR model so the first real call is fast."""
         self._load_model()
 
     def run(self, image_path: str) -> OCRResult:

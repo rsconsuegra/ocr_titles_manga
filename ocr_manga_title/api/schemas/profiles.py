@@ -10,6 +10,8 @@ from pydantic import BaseModel
 
 
 class ProfileCreateRequest(BaseModel):
+    """Request body for creating a new pipeline profile."""
+
     name: str
     description: str | None = None
     preprocess_steps: dict[str, dict[str, Any]] | None = None
@@ -21,6 +23,8 @@ class ProfileCreateRequest(BaseModel):
 
 
 class ProfileUpdateRequest(BaseModel):
+    """Request body for partially updating a pipeline profile."""
+
     name: str | None = None
     description: str | None = None
     preprocess_steps: dict[str, dict[str, Any]] | None = None
@@ -32,33 +36,41 @@ class ProfileUpdateRequest(BaseModel):
 
 
 class ProfileResponse(BaseModel):
+    """Full profile representation returned by the API."""
+
     model_config = {"from_attributes": True}
 
     id: uuid.UUID
     name: str
     description: str | None
-    preprocess_steps: dict | None
-    ocr_models: dict | None
+    preprocess_steps: dict[str, Any] | None
+    ocr_models: dict[str, Any] | None
     enable_llm: bool
     llm_provider: str
-    llm_config: dict | None
+    llm_config: dict[str, Any] | None
     is_default: bool
     created_at: datetime
     updated_at: datetime | None
 
 
 class ProfileExportFile(BaseModel):
+    """Envelope schema for profile JSON export files."""
+
     version: int = 1
     exported_at: datetime
     profile: ProfileCreateRequest
 
 
 class ProfileValidationWarning(BaseModel):
+    """A single validation warning or error for an imported profile."""
+
     field: str
     message: str
 
 
 class ProfileImportResult(BaseModel):
+    """Result of a profile import operation."""
+
     profile: ProfileResponse | None = None
     warnings: list[ProfileValidationWarning] = []
     errors: list[ProfileValidationWarning] = []

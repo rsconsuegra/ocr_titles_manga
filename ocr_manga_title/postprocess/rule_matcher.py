@@ -5,7 +5,6 @@ import unicodedata
 
 from ocr_manga_title.schemas import ExtractedTitle
 
-
 _ISBN_MATCH_CONFIDENCE = 0.9
 
 

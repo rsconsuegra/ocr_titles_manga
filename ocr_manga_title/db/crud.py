@@ -1,11 +1,11 @@
 import uuid
+from typing import Any
 
 from sqlalchemy import func as sa_func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ocr_manga_title.db.enums import BatchStatus, RunStatus
-from ocr_manga_title.schemas import utcnow
 from ocr_manga_title.db.models import (
     BatchRun,
     CatalogEntry,
@@ -15,6 +15,7 @@ from ocr_manga_title.db.models import (
     PipelineRun,
     PromptVersion,
 )
+from ocr_manga_title.schemas import utcnow
 
 _VALID_MODEL_CONFIG_COLS = {
     "is_enabled", "parameters", "language_hint",
@@ -24,6 +25,11 @@ _VALID_CATALOG_ENTRY_COLS = {
 }
 _VALID_BATCH_RUN_COLS = {
     "status", "completed_count", "failed_count", "completed_at",
+}
+_VALID_PIPELINE_RUN_COLS = {
+    "input_image_path", "source_url", "source_platform",
+    "status", "error_message", "preprocess_config",
+    "batch_run_id", "completed_at",
 }
 _VALID_PROFILE_COLS = {
     "name", "description", "preprocess_steps", "ocr_models",
@@ -115,7 +121,7 @@ async def list_model_configs(
 
 
 async def update_model_config(
-    session: AsyncSession, model_name: str, **kwargs
+    session: AsyncSession, model_name: str, **kwargs: Any
 ) -> ModelConfig | None:
     """Update fields on an existing model configuration.
 
@@ -141,7 +147,7 @@ async def update_model_config(
     return config
 
 
-async def create_pipeline_run(session: AsyncSession, **kwargs) -> PipelineRun:
+async def create_pipeline_run(session: AsyncSession, **kwargs: Any) -> PipelineRun:
     """Insert a new pipeline run record.
 
     Args:
@@ -152,6 +158,9 @@ async def create_pipeline_run(session: AsyncSession, **kwargs) -> PipelineRun:
         The freshly created :class:`PipelineRun`.
 
     """
+    unknown = set(kwargs) - _VALID_PIPELINE_RUN_COLS
+    if unknown:
+        raise TypeError(f"Unknown PipelineRun fields: {unknown}")
     run = PipelineRun(**kwargs)
     session.add(run)
     await session.flush()
@@ -308,7 +317,7 @@ async def count_catalog_entries(
 
 
 async def update_catalog_entry(
-    session: AsyncSession, entry_id: uuid.UUID, **kwargs
+    session: AsyncSession, entry_id: uuid.UUID, **kwargs: Any
 ) -> CatalogEntry | None:
     """Update fields on an existing catalog entry.
 
@@ -353,7 +362,7 @@ async def get_catalog_entry_by_run(
 
 
 async def create_batch_run(
-    session: AsyncSession, *, name: str | None, total_count: int, **kwargs
+    session: AsyncSession, *, name: str | None, total_count: int, **kwargs: Any
 ) -> BatchRun:
     """Insert a new batch run record.
 
@@ -367,6 +376,9 @@ async def create_batch_run(
         The freshly created :class:`BatchRun`.
 
     """
+    unknown = set(kwargs) - _VALID_BATCH_RUN_COLS
+    if unknown:
+        raise TypeError(f"Unknown BatchRun fields: {unknown}")
     batch = BatchRun(name=name, total_count=total_count, **kwargs)
     session.add(batch)
     await session.flush()
@@ -439,7 +451,7 @@ async def count_batch_runs(session: AsyncSession, status: str | None = None) -> 
 
 
 async def update_batch_run(
-    session: AsyncSession, batch_id: uuid.UUID, **kwargs
+    session: AsyncSession, batch_id: uuid.UUID, **kwargs: Any
 ) -> BatchRun | None:
     """Update fields on an existing batch run.
 
@@ -538,13 +550,14 @@ async def create_profile(
     *,
     name: str,
     description: str | None = None,
-    preprocess_steps: dict | None = None,
-    ocr_models: dict | None = None,
+    preprocess_steps: dict[str, Any] | None = None,
+    ocr_models: dict[str, Any] | None = None,
     enable_llm: bool = False,
     llm_provider: str = "openrouter",
-    llm_config: dict | None = None,
+    llm_config: dict[str, Any] | None = None,
     is_default: bool = False,
 ) -> PipelineProfile:
+    """Create a new pipeline profile in the database."""
     if is_default:
         await _unset_default_profiles(session)
     profile = PipelineProfile(
@@ -566,6 +579,7 @@ async def create_profile(
 async def get_profile(
     session: AsyncSession, profile_id: uuid.UUID
 ) -> PipelineProfile | None:
+    """Retrieve a profile by its primary key."""
     stmt = select(PipelineProfile).where(PipelineProfile.id == profile_id)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
@@ -574,12 +588,14 @@ async def get_profile(
 async def get_profile_by_name(
     session: AsyncSession, name: str
 ) -> PipelineProfile | None:
+    """Retrieve a profile by its unique name."""
     stmt = select(PipelineProfile).where(PipelineProfile.name == name)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
 async def get_default_profile(session: AsyncSession) -> PipelineProfile | None:
+    """Retrieve the currently marked default profile, if any."""
     stmt = select(PipelineProfile).where(PipelineProfile.is_default.is_(True))
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
@@ -588,6 +604,7 @@ async def get_default_profile(session: AsyncSession) -> PipelineProfile | None:
 async def list_profiles(
     session: AsyncSession, limit: int = 50, offset: int = 0
 ) -> list[PipelineProfile]:
+    """Return a paginated list of profiles ordered by name."""
     stmt = (
         select(PipelineProfile)
         .order_by(PipelineProfile.name)
@@ -599,14 +616,16 @@ async def list_profiles(
 
 
 async def count_profiles(session: AsyncSession) -> int:
+    """Return the total number of profiles."""
     stmt = select(sa_func.count()).select_from(PipelineProfile)
     result = await session.execute(stmt)
     return result.scalar_one()
 
 
 async def update_profile(
-    session: AsyncSession, profile_id: uuid.UUID, **kwargs
+    session: AsyncSession, profile_id: uuid.UUID, **kwargs: Any
 ) -> PipelineProfile | None:
+    """Update selected fields on an existing profile."""
     profile = await get_profile(session, profile_id)
     if not profile:
         return None
@@ -625,6 +644,7 @@ async def update_profile(
 async def delete_profile(
     session: AsyncSession, profile_id: uuid.UUID
 ) -> bool:
+    """Delete a profile by its primary key."""
     profile = await get_profile(session, profile_id)
     if not profile:
         return False

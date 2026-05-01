@@ -19,6 +19,7 @@ Multiple steps are composed by chaining their forward transforms.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -34,12 +35,14 @@ class CoordinateTransform:
     offset_y: float = 0.0
 
     def inverse_map_point(self, x: float, y: float) -> tuple[float, float]:
+        """Map a point from preprocessed space back to original space."""
         return (
             (x - self.offset_x) / self.scale_x,
             (y - self.offset_y) / self.scale_y,
         )
 
     def inverse_map_bbox(self, bbox: list[list[float]]) -> list[list[float]]:
+        """Map an entire bounding box from preprocessed to original space."""
         return [list(self.inverse_map_point(p[0], p[1])) for p in bbox]
 
     def compose(self, other: CoordinateTransform) -> CoordinateTransform:
@@ -59,10 +62,11 @@ class CoordinateTransform:
 
     @staticmethod
     def identity() -> CoordinateTransform:
+        """Return a no-op identity transform."""
         return CoordinateTransform()
 
     @staticmethod
-    def from_step(step_name: str, metadata: dict) -> CoordinateTransform:
+    def from_step(step_name: str, metadata: dict[str, Any]) -> CoordinateTransform:
         """Build a transform from a single preprocessing step's metadata.
 
         Recognised steps:
@@ -92,7 +96,7 @@ class CoordinateTransform:
         return CoordinateTransform.identity()
 
     @staticmethod
-    def from_pipeline(steps: list[tuple[str, dict]]) -> CoordinateTransform:
+    def from_pipeline(steps: list[tuple[str, dict[str, Any]]]) -> CoordinateTransform:
         """Compose transforms from an ordered list of ``(step_name, metadata)`` pairs.
 
         Steps are applied in pipeline order (first step first).  The resulting

@@ -1,5 +1,7 @@
 """Settings API routes — credentials management and Ollama configuration."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +16,11 @@ from ocr_manga_title.services.config_live import (
     write_ollama_base_url,
     write_ollama_models,
 )
-from ocr_manga_title.services.ollama import is_ollama_configured, list_models, list_vision_models
+from ocr_manga_title.services.ollama import (
+    is_ollama_configured,
+    list_models,
+    list_vision_models,
+)
 from ocr_manga_title.settings import OPENROUTER_API_KEY
 
 router = APIRouter()
@@ -29,35 +35,45 @@ async def _validate_service(service: str = Path()) -> str:
 
 
 class OllamaUrlRequest(BaseModel):
+    """Request body for updating the Ollama base URL and default models."""
+
     base_url: str
     default_model: str | None = None
     default_vision_model: str | None = None
 
 
 class OllamaUrlResponse(BaseModel):
+    """Response containing Ollama connection info and available models."""
+
     base_url: str
     default_model: str
     default_vision_model: str
-    available_llm_models: list[dict]
-    available_vision_models: list[dict]
+    available_llm_models: list[dict[str, Any]]
+    available_vision_models: list[dict[str, Any]]
     validated: bool
     message: str
 
 
 class OllamaSettingsResponse(BaseModel):
+    """Current Ollama configuration and available models."""
+
     base_url: str
     configured: bool
     default_model: str
     default_vision_model: str
-    available_llm_models: list[dict]
-    available_vision_models: list[dict]
+    available_llm_models: list[dict[str, Any]]
+    available_vision_models: list[dict[str, Any]]
 
 
 class ApiKeyRequest(BaseModel):
+    """Request body for submitting an API key."""
+
     api_key: str
 
 
 class ApiKeyResponse(BaseModel):
+    """Response with credential status information for a service."""
+
     service: str
     has_key: bool
     masked_key: str | None
@@ -66,15 +82,19 @@ class ApiKeyResponse(BaseModel):
 
 
 class ValidateResponse(BaseModel):
+    """Response indicating whether a credential is valid."""
+
     valid: bool
     message: str
 
 
 class CredentialDeleteResponse(BaseModel):
+    """Response confirming credential deactivation."""
+
     deactivated: bool
 
 
-async def _fetch_model_lists() -> tuple[list[dict], list[dict]]:
+async def _fetch_model_lists() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if not is_ollama_configured():
         return [], []
     try:
@@ -99,7 +119,8 @@ async def _fetch_model_lists() -> tuple[list[dict], list[dict]]:
 
 
 @router.get("/ollama", response_model=OllamaSettingsResponse)
-async def get_ollama_settings():
+async def get_ollama_settings() -> OllamaSettingsResponse:
+    """Retrieve current Ollama configuration and available models."""
     llm_list, vision_list = await _fetch_model_lists()
     return OllamaSettingsResponse(
         base_url=get_ollama_base_url(),
@@ -112,7 +133,8 @@ async def get_ollama_settings():
 
 
 @router.put("/ollama", response_model=OllamaUrlResponse)
-async def update_ollama_url(req: OllamaUrlRequest):
+async def update_ollama_url(req: OllamaUrlRequest) -> OllamaUrlResponse:
+    """Update the Ollama base URL and optional default models."""
     url = req.base_url.strip().rstrip("/")
     write_ollama_base_url(url)
 
@@ -136,10 +158,12 @@ async def update_ollama_url(req: OllamaUrlRequest):
 
 
 @router.post("/ollama/ping", response_model=OllamaUrlResponse)
-async def ping_ollama_endpoint(req: OllamaUrlRequest):
+async def ping_ollama_endpoint(req: OllamaUrlRequest) -> OllamaUrlResponse:
+    """Test connectivity to an Ollama instance and list its models."""
     url = req.base_url.strip().rstrip("/")
     ok, msg = await ping_ollama(url)
-    llm_list, vision_list = [], []
+    llm_list: list[dict[str, Any]] = []
+    vision_list: list[dict[str, Any]] = []
     if ok:
         llm_list, vision_list = await _fetch_model_lists()
     return OllamaUrlResponse(
@@ -154,14 +178,16 @@ async def ping_ollama_endpoint(req: OllamaUrlRequest):
 
 
 @router.get("/credentials/{service}", response_model=ApiKeyResponse)
-async def get_credential(service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)):
+async def get_credential(service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)) -> ApiKeyResponse:
+    """Retrieve credential status for a given service."""
     env_default = OPENROUTER_API_KEY if service == "openrouter" else ""
     info = await cred.get_credential_info(db, service, env_default)
     return ApiKeyResponse(**info)
 
 
 @router.put("/credentials/{service}", response_model=ValidateResponse)
-async def update_credential(req: ApiKeyRequest, service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)):
+async def update_credential(req: ApiKeyRequest, service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)) -> ValidateResponse:
+    """Store or update an API key for a service."""
     if service == "openrouter":
         valid, msg = await cred.validate_openrouter_key(req.api_key)
         if not valid:
@@ -173,14 +199,16 @@ async def update_credential(req: ApiKeyRequest, service: str = Depends(_validate
 
 
 @router.delete("/credentials/{service}", response_model=CredentialDeleteResponse)
-async def delete_credential(service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)):
+async def delete_credential(service: str = Depends(_validate_service), db: AsyncSession = Depends(get_db)) -> CredentialDeleteResponse:
+    """Deactivate the stored API key for a service."""
     deactivated = await cred.deactivate_key(db, service)
     await db.commit()
     return CredentialDeleteResponse(deactivated=deactivated)
 
 
 @router.post("/credentials/{service}/validate", response_model=ValidateResponse)
-async def validate_credential(req: ApiKeyRequest, service: str = Depends(_validate_service)):
+async def validate_credential(req: ApiKeyRequest, service: str = Depends(_validate_service)) -> ValidateResponse:
+    """Validate an API key without storing it."""
     if service == "openrouter":
         valid, msg = await cred.validate_openrouter_key(req.api_key)
         return ValidateResponse(valid=valid, message=msg)

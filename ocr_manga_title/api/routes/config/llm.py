@@ -1,5 +1,7 @@
 """LLM provider discovery API route."""
 
+from typing import Any
+
 from fastapi import APIRouter
 
 from ocr_manga_title.api.schemas.ollama import (
@@ -12,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/providers", response_model=LLMProvidersResponse)
-async def get_llm_providers():
+async def get_llm_providers() -> LLMProvidersResponse:
     """Return available LLM providers with connection status."""
     providers = [
         LLMProviderInfo(
@@ -58,7 +60,7 @@ async def get_llm_providers():
 
 
 @router.get("/openrouter/models")
-async def get_openrouter_models():
+async def get_openrouter_models() -> list[dict[str, Any]]:
     """Return available OpenRouter models from the YAML config."""
     from ocr_manga_title.config import load_openrouter_models
 

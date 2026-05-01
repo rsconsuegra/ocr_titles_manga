@@ -68,9 +68,9 @@ CACHE_SWEEPER_INTERVAL_SECONDS: int = int(
 )
 
 # --- CORS ---
-CORS_ORIGINS: list[str] = os.getenv(
-    "CORS_ORIGINS", "http://localhost:5173"
-).split(",")
+CORS_ORIGINS: tuple[str, ...] = tuple(
+    os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+)
 
 # --- Encryption ---
 SERVER_SECRET: str = os.getenv("SERVER_SECRET", "")

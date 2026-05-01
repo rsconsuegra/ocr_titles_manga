@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,28 +16,27 @@ from ocr_manga_title.api.routes._helpers import (
     save_uploaded_image,
 )
 from ocr_manga_title.api.schemas.ocr import QuickRunResponse
+from ocr_manga_title.preprocess.registry import SYNC_BLOCKED_METHODS
 from ocr_manga_title.services.cache import (
     hash_bytes,
     run_all_models_cached,
     run_preprocessing_cached,
 )
-from ocr_manga_title.services.ocr import run_llm_extraction
-
-from ocr_manga_title.preprocess.registry import SYNC_BLOCKED_METHODS
+from ocr_manga_title.services.ocr import pick_best_ocr_data, run_llm_extraction
 
 router = APIRouter()
 
 
 def _merge_profile_with_overrides(
-    profile_steps: dict | None,
-    profile_models: dict | None,
+    profile_steps: dict[str, Any] | None,
+    profile_models: dict[str, Any] | None,
     profile_llm: bool,
     profile_llm_provider: str,
-    override_steps: dict,
-    override_models: dict,
+    override_steps: dict[str, Any],
+    override_models: dict[str, Any],
     override_llm: bool | None,
     override_llm_provider: str | None,
-) -> tuple[dict, dict, bool, str]:
+) -> tuple[dict[str, Any], dict[str, Any], bool, str]:
     base_steps = dict(profile_steps or {})
     base_steps.update(override_steps)
 
@@ -63,21 +63,22 @@ async def quick_run(
     reasoning_enabled: str = Form(""),
     profile_id: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> QuickRunResponse:
+    """Execute a stateless full pipeline run on a single image."""
     try:
         pp_steps = json.loads(preprocess_steps)
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in preprocess_steps",
-        )
+        ) from None
     try:
         ocr_mods = json.loads(ocr_models)
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in ocr_models",
-        )
+        ) from None
     effective_llm_provider = llm_provider
     llm_cfg = parse_llm_form_config(
         llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars, reasoning_enabled
@@ -146,7 +147,10 @@ async def quick_run(
         )
 
         if step_metadata:
+            import copy
+
             from ocr_manga_title.preprocess.transform import CoordinateTransform
+            ocr_results = copy.deepcopy(ocr_results)
             transform = CoordinateTransform.from_pipeline(step_metadata)
             for ocr_result in ocr_results:
                 if ocr_result.blocks:
@@ -155,16 +159,7 @@ async def quick_run(
 
         llm_data = None
         if enable_llm:
-            best = next(
-                (
-                    r
-                    for r in sorted(
-                        ocr_results, key=lambda r: r.confidence, reverse=True
-                    )
-                    if r.raw_text.strip() and not r.error
-                ),
-                None,
-            )
+            best = pick_best_ocr_data(ocr_results)
             if best:
                 llm_data = await asyncio.to_thread(
                     run_llm_extraction,

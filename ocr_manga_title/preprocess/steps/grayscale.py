@@ -1,5 +1,7 @@
 """Grayscale conversion step for preprocessing."""
 
+from typing import Any
+
 import cv2
 import numpy as np
 
@@ -19,7 +21,7 @@ class GrayscaleStep(BasePreProcessor):
         """Whether the step's runtime dependencies are installed."""
         return True
 
-    def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
+    def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Convert an image to single-channel grayscale."""
         if image.ndim == 2:
             return image, {"original_channels": 1, "converted": False}

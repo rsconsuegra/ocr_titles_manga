@@ -1,6 +1,7 @@
 """Image denoising step with configurable methods and strength presets."""
 
 import logging
+from typing import Any
 
 import cv2
 import numpy as np
@@ -9,7 +10,7 @@ from ocr_manga_title.preprocess.base import BasePreProcessor
 
 logger = logging.getLogger(__name__)
 
-STRENGTH_PRESETS = {
+STRENGTH_PRESETS: dict[str, dict[str, dict[str, float]]] = {
     "gaussian": {
         "light": {"ksize": 3, "sigma": 0.5},
         "medium": {"ksize": 5, "sigma": 1.0},
@@ -41,10 +42,10 @@ class DenoiseStep(BasePreProcessor):
         """Whether the step's runtime dependencies are installed."""
         return True
 
-    def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
+    def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Reduce image noise using the configured method and strength."""
-        method = config.get("method", "gaussian")
-        strength = config.get("strength", "light")
+        method: str = config.get("method", "gaussian") or "gaussian"
+        strength: str = config.get("strength", "light") or "light"
 
         if method not in STRENGTH_PRESETS:
             logger.warning(
@@ -60,10 +61,10 @@ class DenoiseStep(BasePreProcessor):
 
         if method == "gaussian":
             result = cv2.GaussianBlur(
-                image, (params["ksize"], params["ksize"]), params["sigma"]
+                image, (int(params["ksize"]), int(params["ksize"])), params["sigma"]
             )
         elif method == "median":
-            result = cv2.medianBlur(image, params["ksize"])
+            result = cv2.medianBlur(image, int(params["ksize"]))
         elif method == "nlmeans":
             if image.ndim == 2:
                 result = cv2.fastNlMeansDenoising(image, None, h=params["h"])

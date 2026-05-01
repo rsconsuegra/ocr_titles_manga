@@ -22,7 +22,7 @@ router = APIRouter()
 
 
 @router.get("/status", response_model=OllamaStatusResponse)
-async def get_ollama_status():
+async def get_ollama_status() -> OllamaStatusResponse:
     """Return whether Ollama is configured, the base URL, and default models."""
     return OllamaStatusResponse(
         configured=is_ollama_configured(),
@@ -33,7 +33,7 @@ async def get_ollama_status():
 
 
 @router.get("/vision-models", response_model=list[OllamaVisionModelResponse])
-async def get_vision_models():
+async def get_vision_models() -> list[OllamaVisionModelResponse]:
     """List Ollama models that have vision capability."""
     models = await list_vision_models()
     return [
@@ -43,7 +43,7 @@ async def get_vision_models():
 
 
 @router.get("/llm-models", response_model=list[OllamaLLMModelResponse])
-async def get_llm_models():
+async def get_llm_models() -> list[OllamaLLMModelResponse]:
     """List all available Ollama models (usable for LLM extraction)."""
     models = await list_models()
     return [

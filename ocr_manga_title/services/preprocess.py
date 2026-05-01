@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import numpy as np
 
@@ -23,8 +24,8 @@ def get_step_instance(step_name: str) -> BasePreProcessor:
 
 def run_preprocessing_pipeline(
     image_data_url: str,
-    steps_config: dict,
-) -> tuple[str, list[tuple[str, dict]]]:
+    steps_config: dict[str, Any],
+) -> tuple[str, list[tuple[str, dict[str, Any]]]]:
     """Run preprocessing on a data URL.
 
     Returns ``(path, step_metadata)`` where *step_metadata* is an ordered
@@ -36,8 +37,8 @@ def run_preprocessing_pipeline(
 
 def run_preprocessing_pipeline_from_array(
     image: np.ndarray,
-    steps_config: dict,
-) -> tuple[str, list[tuple[str, dict]]]:
+    steps_config: dict[str, Any],
+) -> tuple[str, list[tuple[str, dict[str, Any]]]]:
     """Run preprocessing on a numpy array.
 
     Returns ``(path, step_metadata)`` where *step_metadata* is an ordered
@@ -47,9 +48,9 @@ def run_preprocessing_pipeline_from_array(
 
 
 def _run_pipeline_steps(
-    current_image: np.ndarray, steps_config: dict,
-) -> tuple[str, list[tuple[str, dict]]]:
-    step_metadata: list[tuple[str, dict]] = []
+    current_image: np.ndarray, steps_config: dict[str, Any],
+) -> tuple[str, list[tuple[str, dict[str, Any]]]]:
+    step_metadata: list[tuple[str, dict[str, Any]]] = []
     pipeline_start = time.monotonic()
     for step_name in STEP_ORDER:
         step_config = dict(steps_config.get(step_name, {}))

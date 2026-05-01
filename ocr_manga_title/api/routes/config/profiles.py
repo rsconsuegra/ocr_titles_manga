@@ -37,7 +37,8 @@ router = APIRouter()
 async def create_profile_endpoint(
     body: ProfileCreateRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> ProfileResponse:
+    """Create a new OCR processing profile."""
     try:
         profile = await create_profile(
             db,
@@ -63,7 +64,8 @@ async def list_profiles_endpoint(
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-):
+) -> PaginatedResponse[ProfileResponse]:
+    """List all profiles with pagination."""
     profiles = await list_profiles(db, limit=limit, offset=offset)
     total = await count_profiles(db)
     return PaginatedResponse(
@@ -75,7 +77,8 @@ async def list_profiles_endpoint(
 
 
 @router.post("/validate", response_model=ProfileImportResult)
-async def validate_import_endpoint(body: ProfileExportFile):
+async def validate_import_endpoint(body: ProfileExportFile) -> ProfileImportResult:
+    """Validate a profile export payload without importing it."""
     validation = validate_profile_data(body.profile.model_dump())
 
     return ProfileImportResult(
@@ -94,7 +97,8 @@ async def validate_import_endpoint(body: ProfileExportFile):
 async def import_profile_endpoint(
     body: ProfileExportFile,
     db: AsyncSession = Depends(get_db),
-):
+) -> ProfileImportResult:
+    """Import a profile from an exported payload, resolving name conflicts."""
     validation = validate_profile_data(body.profile.model_dump())
 
     warnings = [
@@ -146,7 +150,8 @@ async def import_profile_endpoint(
 @router.get("/{profile_id}", response_model=ProfileResponse)
 async def get_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+) -> ProfileResponse:
+    """Retrieve a single profile by ID."""
     profile = await get_profile(db, profile_id)
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
@@ -158,7 +163,8 @@ async def update_profile_endpoint(
     profile_id: uuid.UUID,
     body: ProfileUpdateRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> ProfileResponse:
+    """Update fields on an existing profile."""
     kwargs = body.model_dump(exclude_none=True)
     profile = await update_profile(db, profile_id, **kwargs)
     if not profile:
@@ -169,7 +175,8 @@ async def update_profile_endpoint(
 @router.delete("/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+) -> None:
+    """Delete a profile by ID."""
     deleted = await delete_profile(db, profile_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
@@ -178,7 +185,8 @@ async def delete_profile_endpoint(
 @router.post("/{profile_id}/set-default", response_model=ProfileResponse)
 async def set_default_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+) -> ProfileResponse:
+    """Set a profile as the default."""
     profile = await update_profile(db, profile_id, is_default=True)
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
@@ -188,7 +196,8 @@ async def set_default_profile_endpoint(
 @router.get("/{profile_id}/export")
 async def export_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+) -> JSONResponse:
+    """Export a profile as a downloadable JSON file."""
     profile = await get_profile(db, profile_id)
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")

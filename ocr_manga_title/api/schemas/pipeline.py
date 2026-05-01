@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -28,7 +29,7 @@ class OCRResultResponse(BaseModel):
     confidence: float
     processing_time_ms: int
     error: str | None = None
-    blocks: list[dict] | None = None
+    blocks: list[dict[str, Any]] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

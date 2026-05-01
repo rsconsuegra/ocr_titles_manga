@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.routes._helpers import (
+    resolve_profile_snapshot,
     validate_and_save_file,
     validate_file_count,
-    resolve_profile_snapshot,
 )
 from ocr_manga_title.api.schemas.pipeline import PipelineRunResponse
 from ocr_manga_title.db.crud import create_pipeline_run, get_pipeline_run
@@ -20,7 +20,8 @@ async def upload_images(
     files: list[UploadFile] = File(...),
     profile_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list[PipelineRunResponse]:
+    """Upload images and create individual pipeline runs."""
     validate_file_count(files)
 
     config_snapshot = await resolve_profile_snapshot(db, profile_id)
@@ -41,7 +42,8 @@ async def upload_images(
 
 
 @router.get("/{run_id}", response_model=PipelineRunResponse)
-async def get_input(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_input(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> PipelineRunResponse:
+    """Retrieve a single pipeline run by ID."""
     run = await get_pipeline_run(session=db, run_id=run_id)
     if not run:
         raise HTTPException(

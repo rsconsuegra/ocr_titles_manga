@@ -18,18 +18,21 @@ _VISION_CONFIDENCE = 0.8
 class OllamaVisionModel(BaseOCRModel):
     """OCR adapter for Ollama multimodal models via the native /api/chat endpoint."""
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig) -> None:
         self._config = config
 
     @property
     def name(self) -> str:
+        """Return the canonical model identifier."""
         return "ollama_vision"
 
     @property
     def is_available(self) -> bool:
+        """Check whether Ollama is reachable and configured."""
         return is_ollama_configured()
 
     def run(self, image_path: str) -> OCRResult:
+        """Run OCR extraction via an Ollama multimodal model."""
         self._validate_image_path(image_path)
 
         if not self.is_available:

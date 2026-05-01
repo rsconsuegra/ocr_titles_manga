@@ -1,11 +1,18 @@
+import asyncio
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.services.image import save_bytes
-from ocr_manga_title.settings import ALLOWED_EXTENSIONS, MAX_FILE_SIZE, MAX_FILES, UPLOAD_DIR
+from ocr_manga_title.settings import (
+    ALLOWED_EXTENSIONS,
+    MAX_FILE_SIZE,
+    MAX_FILES,
+    UPLOAD_DIR,
+)
 
 UPLOAD_DIR_PATH = Path(UPLOAD_DIR)
 
@@ -35,19 +42,19 @@ async def validate_and_save_file(file: UploadFile) -> Path:
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large: {file.filename} (max 20MB)",
+            detail=f"File too large: {file.filename} (max {MAX_FILE_SIZE // (1024 * 1024)}MB)",
         )
 
     UPLOAD_DIR_PATH.mkdir(parents=True, exist_ok=True)
     file_id = uuid.uuid4()
     save_path = UPLOAD_DIR_PATH / f"{file_id}{ext}"
-    save_path.write_bytes(content)
+    await asyncio.to_thread(save_path.write_bytes, content)
     return save_path
 
 
 async def resolve_profile_snapshot(
     db: AsyncSession, profile_id: uuid.UUID | None
-) -> dict | None:
+) -> dict[str, Any] | None:
     if profile_id is None:
         return None
     from ocr_manga_title.db.crud import get_profile
@@ -67,7 +74,7 @@ def parse_llm_form_config(
     temperature: str,
     max_ocr_chars: str,
     reasoning_enabled: str = "",
-) -> dict | None:
+) -> dict[str, Any] | None:
     if not (system_prompt or user_prompt or temperature or max_ocr_chars or reasoning_enabled):
         return None
     try:
@@ -77,15 +84,15 @@ def parse_llm_form_config(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid numeric value for temperature or max_ocr_chars",
-        )
-    cfg: dict = {
+        ) from None
+    cfg: dict[str, Any] = {
         "system_prompt": system_prompt,
         "user_prompt_template": user_prompt or "{ocr_text}",
         "temperature": temp_val,
         "max_ocr_chars": chars_val,
     }
     if reasoning_enabled:
-        cfg["reasoning_enabled"] = True
+        cfg["reasoning_enabled"] = reasoning_enabled.lower() in ("true", "1", "yes")
     return cfg
 
 

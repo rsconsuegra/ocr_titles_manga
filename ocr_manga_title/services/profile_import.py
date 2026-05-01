@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ocr_manga_title.engine.registry import MODEL_REGISTRY
 from ocr_manga_title.preprocess.registry import STEP_REGISTRY
@@ -12,21 +12,27 @@ if TYPE_CHECKING:
 
 @dataclass
 class ValidationMessage:
+    """A single validation message tied to a specific field."""
+
     field: str
     message: str
 
 
 @dataclass
 class ProfileValidationResult:
+    """Aggregated validation outcome for profile data."""
+
     warnings: list[ValidationMessage] = field(default_factory=list)
     errors: list[ValidationMessage] = field(default_factory=list)
 
     @property
     def is_valid(self) -> bool:
+        """Return True if there are no validation errors."""
         return len(self.errors) == 0
 
 
-def validate_profile_data(profile_data: dict) -> ProfileValidationResult:
+def validate_profile_data(profile_data: dict[str, Any]) -> ProfileValidationResult:
+    """Validate raw profile data and return warnings and errors."""
     result = ProfileValidationResult()
 
     name = profile_data.get("name", "").strip()
@@ -112,7 +118,7 @@ def validate_profile_data(profile_data: dict) -> ProfileValidationResult:
 
 
 def _validate_step_configs(
-    steps: dict, path_prefix: str, result: ProfileValidationResult
+    steps: dict[str, Any], path_prefix: str, result: ProfileValidationResult
 ) -> None:
     for step_name, step_config in steps.items():
         if not isinstance(step_config, dict):
@@ -138,7 +144,7 @@ def _validate_step_configs(
 
 
 def _validate_model_configs(
-    models: dict, path_prefix: str, result: ProfileValidationResult
+    models: dict[str, Any], path_prefix: str, result: ProfileValidationResult
 ) -> None:
     for model_name, model_config in models.items():
         if not isinstance(model_config, dict):
@@ -164,8 +170,8 @@ def _validate_model_configs(
 
 
 def _validate_params(
-    config: dict,
-    param_descriptors: list,
+    config: dict[str, Any],
+    param_descriptors: list[Any],
     path: str,
     result: ProfileValidationResult,
 ) -> None:
@@ -228,7 +234,8 @@ def _validate_params(
                 )
 
 
-async def resolve_name_conflict(session: "AsyncSession", name: str) -> str:
+async def resolve_name_conflict(session: AsyncSession, name: str) -> str:
+    """Append a numeric suffix to *name* until it is unique."""
     from ocr_manga_title.db.crud import get_profile_by_name
 
     candidate = name

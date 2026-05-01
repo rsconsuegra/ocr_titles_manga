@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -24,7 +25,7 @@ class PreProcessingPipeline:
 
     STEP_ORDER = _STEP_ORDER
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict[str, Any]):
         self._config = config.get("preprocessing", {})
         self._debug = self._config.get("debug", False)
         self._steps: list[BasePreProcessor] = self._initialize_steps()

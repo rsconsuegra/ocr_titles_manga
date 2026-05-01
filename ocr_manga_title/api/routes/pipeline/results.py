@@ -24,7 +24,7 @@ async def list_results(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-):
+) -> PaginatedResponse[PostProcessingResultResponse]:
     """List post-processing results with optional filtering and pagination."""
     stmt = (
         select(PostProcessingResult)
@@ -62,7 +62,7 @@ async def override_result(
     result_id: uuid.UUID,
     body: ResultOverrideRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> PostProcessingResultResponse:
     """Override title fields on a post-processing result and sync the catalog entry."""
     pp_result = await override_and_sync(
         db,

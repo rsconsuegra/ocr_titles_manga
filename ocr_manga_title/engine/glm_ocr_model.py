@@ -4,6 +4,8 @@ import logging
 import time
 from pathlib import Path
 
+from openai import OpenAI
+
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
 from ocr_manga_title.schemas import ModelConfig, OCRResult
@@ -32,7 +34,7 @@ class GLMOCRModel(BaseOCRModel):
 
     def __init__(self, config: ModelConfig):
         self._config = config
-        self._client = None
+        self._client: OpenAI | None = None
 
     @property
     def name(self) -> str:
@@ -45,7 +47,7 @@ class GLMOCRModel(BaseOCRModel):
         params = self._config.parameters or {}
         return bool(params.get("api_endpoint"))
 
-    def _get_client(self):
+    def _get_client(self) -> OpenAI:
         if self._client is None:
             import openai
 

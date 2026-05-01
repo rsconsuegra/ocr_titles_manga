@@ -75,7 +75,7 @@ class BaseOCRModel(ABC):
             error=error,
         )
 
-    def warmup(self) -> None:
+    def warmup(self) -> None:  # noqa: B027
         """Pre-load model weights so the first real call is fast.
 
         The default implementation is a no-op.  Subclasses that support

@@ -3,6 +3,7 @@
 import logging
 import threading
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 
@@ -34,7 +35,7 @@ class BasePreProcessor(ABC):
         return DEFAULT_STEP_TIMEOUT
 
     @abstractmethod
-    def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
+    def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Apply the preprocessing step.
 
         Args:
@@ -50,9 +51,9 @@ class BasePreProcessor(ABC):
 def run_step_with_timeout(
     step: BasePreProcessor,
     image: np.ndarray,
-    config: dict,
+    config: dict[str, Any],
     timeout_override: int | None = None,
-) -> tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """Execute a step's process() with a timeout guard.
 
     Runs the step in a daemon thread.  If the step does not finish within
@@ -71,10 +72,11 @@ def run_step_with_timeout(
 
     Raises:
         TimeoutError: If the step exceeds its time limit.
+
     """
     timeout_seconds = timeout_override or step.timeout
 
-    result: list[tuple[np.ndarray, dict] | None] = [None]
+    result: list[tuple[np.ndarray, dict[str, Any]] | None] = [None]
     exception: list[Exception | None] = [None]
 
     def _target() -> None:

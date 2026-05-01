@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
+from typing import Any
 
 from ocr_manga_title.settings import CONFIG_PATH
 
@@ -25,7 +25,7 @@ def _toml_path() -> Path:
     return Path(CONFIG_PATH)
 
 
-def read_toml() -> dict:
+def read_toml() -> dict[str, Any]:
     """Read and parse the current configs.toml."""
     p = _toml_path()
     if not p.exists():
@@ -36,24 +36,24 @@ def read_toml() -> dict:
 def get_ollama_base_url() -> str:
     """Return the current Ollama base_url from TOML, or empty string."""
     data = read_toml()
-    return data.get("ollama", {}).get("base_url", "")
+    return data.get("ollama", {}).get("base_url", "")  # type: ignore[no-any-return]
 
 
 def get_ollama_default_model() -> str:
     """Return the default Ollama LLM model from TOML."""
     data = read_toml()
-    return data.get("ollama", {}).get("default_model", "")
+    return data.get("ollama", {}).get("default_model", "")  # type: ignore[no-any-return]
 
 
 def get_ollama_default_vision_model() -> str:
     """Return the default Ollama vision model from TOML."""
     data = read_toml()
-    return data.get("ollama", {}).get("default_vision_model", "")
+    return data.get("ollama", {}).get("default_vision_model", "")  # type: ignore[no-any-return]
 
 
-def get_ollama_config() -> dict:
+def get_ollama_config() -> dict[str, Any]:
     """Return the full [ollama] section from TOML."""
-    return read_toml().get("ollama", {})
+    return read_toml().get("ollama", {})  # type: ignore[no-any-return]
 
 
 def write_ollama_base_url(new_url: str) -> None:
@@ -94,7 +94,7 @@ def write_ollama_models(
         _invalidate_config_cache()
 
 
-def _write_toml(data: dict) -> None:
+def _write_toml(data: dict[str, Any]) -> None:
     p = _toml_path()
     lines = _serialise_toml(data)
     tmp = p.with_suffix(".toml.tmp")
@@ -103,7 +103,7 @@ def _write_toml(data: dict) -> None:
     logger.info("Updated %s", p)
 
 
-def _serialise_toml(data: dict) -> str:
+def _serialise_toml(data: dict[str, Any]) -> str:
     """Minimal TOML serialiser for the flat structure used by configs.toml."""
     lines: list[str] = []
     top_level = {k: v for k, v in data.items() if not isinstance(v, dict)}

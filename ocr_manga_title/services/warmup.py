@@ -1,8 +1,10 @@
 import contextlib
+import io
 import logging
 import warnings
+from typing import Any
 
-from ocr_manga_title.engine.registry import MODEL_REGISTRY
+from ocr_manga_title.engine.registry import MODEL_REGISTRY, ModelDescriptor
 from ocr_manga_title.schemas import ModelConfig
 
 logger = logging.getLogger(__name__)
@@ -10,20 +12,19 @@ logger = logging.getLogger(__name__)
 _LOCAL_MODELS = {"paddle", "easyocr", "tesseract"}
 
 
-class _QuietStdout:
-    def write(self, *_args):
+class _QuietStdout(io.TextIOBase):
+    def write(self, *_args: Any) -> None:  # type: ignore[override]
         pass
 
-    def flush(self):
+    def flush(self) -> None:
         pass
 
 
-def _warmup_model(name: str, descriptor) -> bool:
+def _warmup_model(name: str, descriptor: ModelDescriptor) -> bool:
     config = ModelConfig(
         name=name,
         enabled=True,
-        language="eng",
-        parameters={p.name: p.default for p in descriptor.params},
+        parameters={**{p.name: p.default for p in descriptor.params}, "language": "eng"},
     )
     try:
         instance = descriptor.model_cls(config)
@@ -31,7 +32,7 @@ def _warmup_model(name: str, descriptor) -> bool:
             logger.info("Model '%s' not available, skipping warmup", name)
             return False
 
-        with contextlib.redirect_stdout(_QuietStdout()):
+        with contextlib.redirect_stdout(_QuietStdout()):  # type: ignore[type-var]
             warnings.filterwarnings("ignore", category=SyntaxWarning)
             instance.warmup()
 
@@ -43,6 +44,7 @@ def _warmup_model(name: str, descriptor) -> bool:
 
 
 def warmup_models() -> list[str]:
+    """Pre-load all local OCR models and return the names that succeeded."""
     warmed: list[str] = []
     logger.info("Starting model warmup...")
 

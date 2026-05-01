@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -16,6 +17,7 @@ import shutil
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -24,18 +26,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ocr_manga_title.api.schemas.ocr import OCRResultData
 from ocr_manga_title.schemas import utcnow
 from ocr_manga_title.services.image import decode_bytes
-from ocr_manga_title.services.preprocess import run_preprocessing_pipeline_from_array
 from ocr_manga_title.services.ocr import run_all_enabled_models, run_single_model
+from ocr_manga_title.services.preprocess import run_preprocessing_pipeline_from_array
 from ocr_manga_title.settings import CACHE_DIR, CACHE_TTL_DAYS
 
 logger = logging.getLogger(__name__)
 
 
 def hash_bytes(raw: bytes) -> str:
+    """Return the SHA-256 hex digest of raw bytes."""
     return hashlib.sha256(raw).hexdigest()
 
 
-def hash_config(config: dict) -> str:
+def hash_config(config: dict[str, Any]) -> str:
+    """Return a deterministic SHA-256 hex digest of a config dict."""
     canonical = json.dumps(config, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -50,22 +54,60 @@ def _expiry() -> datetime:
     return utcnow() + timedelta(days=CACHE_TTL_DAYS)
 
 
-async def get_preprocessed(
-    session: AsyncSession, image_hash: str, config_hash: str,
-) -> tuple[str, list[tuple[str, dict]] | None] | None:
+async def _evict_expired(
+    session: AsyncSession, image_hash: str, cache_type: str
+) -> None:
     from ocr_manga_title.db.models import ImageCache
 
     now = utcnow()
-    stmt = (
-        delete(ImageCache)
-        .where(
-            ImageCache.image_hash == image_hash,
-            ImageCache.cache_type == "preprocess",
-            ImageCache.expires_at < now,
-        )
+    stmt = delete(ImageCache).where(
+        ImageCache.image_hash == image_hash,
+        ImageCache.cache_type == cache_type,
+        ImageCache.expires_at < now,
     )
     await session.execute(stmt)
     await session.flush()
+
+
+async def _upsert_cache_entry(
+    session: AsyncSession,
+    *,
+    image_hash: str,
+    config_hash: str,
+    cache_type: str,
+    result_path: str | None,
+    result_data: object,
+    expires_at: datetime,
+) -> None:
+    from ocr_manga_title.db.models import ImageCache
+
+    stmt = pg_insert(ImageCache).values(
+        id=uuid.uuid4(),
+        image_hash=image_hash,
+        config_hash=config_hash,
+        cache_type=cache_type,
+        result_path=result_path,
+        result_data=result_data,
+        expires_at=expires_at,
+    )
+    set_ = {"result_data": result_data, "expires_at": expires_at}
+    if result_path is not None:
+        set_["result_path"] = result_path
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["image_hash", "config_hash", "cache_type"],
+        set_=set_,
+    )
+    await session.execute(stmt)
+    await session.flush()
+
+
+async def get_preprocessed(
+    session: AsyncSession, image_hash: str, config_hash: str,
+) -> tuple[str, Any] | None:
+    """Look up a cached preprocessed image by content and config hash."""
+    from ocr_manga_title.db.models import ImageCache
+
+    await _evict_expired(session, image_hash, "preprocess")
 
     stmt = select(ImageCache).where(
         ImageCache.image_hash == image_hash,
@@ -88,51 +130,34 @@ async def put_preprocessed(
     image_hash: str,
     config_hash: str,
     source_path: str,
-    step_metadata: list[tuple[str, dict]] | None = None,
-) -> tuple[str, list[tuple[str, dict]] | None]:
-    from ocr_manga_title.db.models import ImageCache
-
+    step_metadata: list[tuple[str, dict[str, Any]]] | None = None,
+) -> tuple[str, list[tuple[str, dict[str, Any]]] | None]:
+    """Store a preprocessed image in the file cache and record the entry."""
     cache_dir = _cache_dir()
     ext = Path(source_path).suffix or ".png"
     cached_name = f"{image_hash}_{config_hash}{ext}"
     cached_path = str(cache_dir / cached_name)
     shutil.copy2(source_path, cached_path)
 
-    expires = _expiry()
-    stmt = pg_insert(ImageCache).values(
-        id=uuid.uuid4(),
+    await _upsert_cache_entry(
+        session,
         image_hash=image_hash,
         config_hash=config_hash,
         cache_type="preprocess",
         result_path=cached_path,
         result_data=step_metadata,
-        expires_at=expires,
+        expires_at=_expiry(),
     )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["image_hash", "config_hash", "cache_type"],
-        set_={"result_path": cached_path, "result_data": step_metadata, "expires_at": expires},
-    )
-    await session.execute(stmt)
-    await session.flush()
     return cached_path, step_metadata
 
 
 async def get_ocr_result(
     session: AsyncSession, image_hash: str, config_hash: str
 ) -> OCRResultData | None:
+    """Look up a cached OCR result by content and config hash."""
     from ocr_manga_title.db.models import ImageCache
 
-    now = utcnow()
-    stmt = (
-        delete(ImageCache)
-        .where(
-            ImageCache.image_hash == image_hash,
-            ImageCache.cache_type == "ocr",
-            ImageCache.expires_at < now,
-        )
-    )
-    await session.execute(stmt)
-    await session.flush()
+    await _evict_expired(session, image_hash, "ocr")
 
     stmt = select(ImageCache).where(
         ImageCache.image_hash == image_hash,
@@ -152,28 +177,21 @@ async def put_ocr_result(
     config_hash: str,
     ocr_result: OCRResultData,
 ) -> None:
-    from ocr_manga_title.db.models import ImageCache
-
-    expires = _expiry()
+    """Persist an OCR result into the database cache."""
     data = ocr_result.model_dump()
-    stmt = pg_insert(ImageCache).values(
-        id=uuid.uuid4(),
+    await _upsert_cache_entry(
+        session,
         image_hash=image_hash,
         config_hash=config_hash,
         cache_type="ocr",
         result_path=None,
         result_data=data,
-        expires_at=expires,
+        expires_at=_expiry(),
     )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["image_hash", "config_hash", "cache_type"],
-        set_={"result_data": data, "expires_at": expires},
-    )
-    await session.execute(stmt)
-    await session.flush()
 
 
 async def evict_expired(session: AsyncSession) -> int:
+    """Remove all expired cache entries and their associated files."""
     from ocr_manga_title.db.models import ImageCache
 
     now = utcnow()
@@ -184,16 +202,14 @@ async def evict_expired(session: AsyncSession) -> int:
     result = await session.execute(stmt)
     orphan_paths = [row[0] for row in result.all()]
 
-    stmt = delete(ImageCache).where(ImageCache.expires_at < now)
-    result = await session.execute(stmt)
-    deleted = result.rowcount
+    del_stmt = delete(ImageCache).where(ImageCache.expires_at < now)
+    del_result = await session.execute(del_stmt)
+    deleted: int = del_result.rowcount  # type: ignore[attr-defined]
     await session.flush()
 
     for path_str in orphan_paths:
-        try:
+        with contextlib.suppress(OSError):
             Path(path_str).unlink(missing_ok=True)
-        except OSError:
-            pass
 
     if deleted:
         logger.info("Cache eviction: removed %d expired entries", deleted)
@@ -203,8 +219,9 @@ async def evict_expired(session: AsyncSession) -> int:
 async def run_preprocessing_cached(
     session: AsyncSession,
     raw: bytes,
-    steps_config: dict,
-) -> tuple[str, list[tuple[str, dict]] | None]:
+    steps_config: dict[str, Any],
+) -> tuple[str, list[tuple[str, dict[str, Any]]] | None]:
+    """Run preprocessing with transparent content-addressable caching."""
     image_hash = hash_bytes(raw)
     config_hash = hash_config(steps_config)
 
@@ -230,8 +247,9 @@ async def run_ocr_cached(
     image_hash: str,
     model_name: str,
     image_path: str,
-    params: dict | None = None,
+    params: dict[str, Any] | None = None,
 ) -> OCRResultData:
+    """Run a single OCR model with transparent caching."""
     params = params or {}
     config_hash = hash_config({"model": model_name, **params})
 
@@ -255,14 +273,15 @@ async def run_all_models_cached(
     session: AsyncSession,
     image_hash: str,
     image_path: str,
-    ocr_config: dict,
+    ocr_config: dict[str, Any],
 ) -> list[OCRResultData]:
+    """Run all enabled OCR models with transparent caching."""
     from ocr_manga_title.engine.registry import MODEL_REGISTRY
 
     results: list[OCRResultData] = []
-    uncached_models: list[tuple[str, dict]] = []
+    uncached_models: list[tuple[str, dict[str, Any]]] = []
 
-    for name, descriptor in MODEL_REGISTRY.items():
+    for name, _descriptor in MODEL_REGISTRY.items():
         override = ocr_config.get(name, {})
         if not override.get("enabled", False):
             continue
@@ -278,11 +297,14 @@ async def run_all_models_cached(
             uncached_models.append((name, override))
 
     if uncached_models:
-        ocr_results = await asyncio.to_thread(run_all_enabled_models, image_path, ocr_config)
+        uncached_config = dict(uncached_models)
+        ocr_results = await asyncio.to_thread(
+            run_all_enabled_models, image_path, uncached_config
+        )
 
         for ocr_result in ocr_results:
             if not ocr_result.error:
-                override = dict(ocr_config.get(ocr_result.model_name, {}))
+                override = dict(uncached_config.get(ocr_result.model_name, {}))
                 params = {k: v for k, v in override.items() if k != "enabled"}
                 config_hash = hash_config(
                     {"model": ocr_result.model_name, **params}

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ocr_manga_title.preprocess.base import BasePreProcessor
 
 
 @dataclass(frozen=True)
@@ -190,7 +193,7 @@ def get_step(name: str) -> StepDescriptor | None:
 _STEP_CLASSES: dict[str, type] | None = None
 
 
-def get_step_class(name: str) -> type:
+def get_step_class(name: str) -> type[BasePreProcessor]:
     """Return the step class for the given step name.
 
     Imports are deferred to avoid pulling in heavy dependencies (cv2, etc.)

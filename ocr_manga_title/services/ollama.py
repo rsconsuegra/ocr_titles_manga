@@ -19,6 +19,7 @@ _HTTP_TIMEOUT = 30.0
 
 
 def is_ollama_configured() -> bool:
+    """Return True if the Ollama base URL is set."""
     return bool(_get_base_url())
 
 
@@ -43,6 +44,7 @@ def _headers() -> dict[str, str]:
 
 
 def invalidate_cache() -> None:
+    """Clear the in-process Ollama model list cache."""
     with _cache_lock:
         _cache["models"] = []
         _cache["ts"] = 0.0
@@ -58,7 +60,7 @@ async def list_models() -> list[dict[str, Any]]:
     now = time.monotonic()
     with _cache_lock:
         if _cache["models"] and (now - _cache["ts"]) < _CACHE_TTL:
-            return _cache["models"]
+            return _cache["models"]  # type: ignore[no-any-return]
 
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
@@ -72,7 +74,7 @@ async def list_models() -> list[dict[str, Any]]:
             with _cache_lock:
                 _cache["models"] = models
                 _cache["ts"] = now
-            return models
+            return models  # type: ignore[no-any-return]
     except httpx.HTTPError as e:
         logger.warning("Failed to list Ollama models: %s", e)
         return []
@@ -92,7 +94,7 @@ async def get_model_capabilities(model_name: str) -> list[str]:
             )
             resp.raise_for_status()
             data = resp.json()
-            return data.get("capabilities", [])
+            return data.get("capabilities", [])  # type: ignore[no-any-return]
     except httpx.HTTPError as e:
         logger.warning("Failed to get capabilities for %s: %s", model_name, e)
         return []
@@ -110,7 +112,7 @@ async def list_vision_models() -> list[dict[str, Any]]:
     now = time.monotonic()
     with _cache_lock:
         if _cache["vision"] and (now - _cache["vision_ts"]) < _CACHE_TTL:
-            return _cache["vision"]
+            return _cache["vision"]  # type: ignore[no-any-return]
 
     models = await list_models()
 
@@ -155,6 +157,7 @@ async def chat_completion(
 
     Returns:
         Response dict with ``message.content`` and metadata.
+
     """
     if not is_ollama_configured():
         raise RuntimeError("Ollama is not configured (OLLAMA_BASE_URL is empty)")
@@ -182,8 +185,7 @@ async def chat_completion(
             headers=_headers(),
         )
         resp.raise_for_status()
-        return resp.json()
-
+        return resp.json()  # type: ignore[no-any-return]
 
 def _inject_images(
     messages: list[dict[str, Any]],
@@ -207,7 +209,7 @@ def chat_completion_sync(
     temperature: float = 0.1,
     timeout: float | None = None,
 ) -> dict[str, Any]:
-    """Synchronous version of :func:`chat_completion` using ``httpx.Client``."""
+    """Provide synchronous chat completion via ``httpx.Client``."""
     if not is_ollama_configured():
         raise RuntimeError("Ollama is not configured (OLLAMA_BASE_URL is empty)")
 
@@ -234,4 +236,4 @@ def chat_completion_sync(
             headers=_headers(),
         )
         resp.raise_for_status()
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]

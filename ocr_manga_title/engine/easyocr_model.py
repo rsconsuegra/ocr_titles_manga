@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import os
 import time
+from typing import Any
 
 from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 class EasyOCRModel(BaseOCRModel):
     """OCR adapter for EasyOCR with lazy reader loading and configurable languages."""
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig) -> None:
         self._config = config
         self._reader = None
         self._detailed = config.parameters.get("detailed", False)
@@ -31,7 +32,7 @@ class EasyOCRModel(BaseOCRModel):
         """Whether the EasyOCR package is installed and importable."""
         return importlib.util.find_spec("easyocr") is not None
 
-    def _load_reader(self):
+    def _load_reader(self) -> Any:
         if self._reader is None:
             import easyocr
 
@@ -49,6 +50,7 @@ class EasyOCRModel(BaseOCRModel):
         return self._reader
 
     def warmup(self) -> None:
+        """Pre-load the EasyOCR reader so the first real call is fast."""
         self._load_reader()
 
     def run(self, image_path: str) -> OCRResult:
@@ -78,8 +80,11 @@ class EasyOCRModel(BaseOCRModel):
                 paragraph=self._paragraph,
             )
 
-            texts = [r[1] for r in results]
-            confidences = [r[2] for r in results]
+            texts = []
+            confidences = []
+            for r in results:
+                texts.append(r[1])
+                confidences.append(float(r[2]) if len(r) > 2 else 0.0)
 
             raw_text = "\n".join(texts)
             avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
@@ -91,10 +96,10 @@ class EasyOCRModel(BaseOCRModel):
                     TextBlock(
                         bbox=[[float(p[0]), float(p[1])] for p in r[0]],
                         text=r[1],
-                        confidence=float(r[2]),
+                        confidence=float(r[2]) if len(r) > 2 else 0.0,
                     )
                     for r in results
-                    if float(r[2]) > 0
+                    if (float(r[2]) if len(r) > 2 else 0.0) > 0
                 ]
 
             return OCRResult(

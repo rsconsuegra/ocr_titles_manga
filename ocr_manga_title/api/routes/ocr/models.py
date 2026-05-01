@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +17,12 @@ from ocr_manga_title.engine.registry import MODEL_REGISTRY
 router = APIRouter()
 
 
-def _db_row_to_dict(row: ModelConfigDB) -> dict:
+def _db_row_to_dict(row: ModelConfigDB) -> dict[str, Any]:
     return {"is_enabled": row.is_enabled, "parameters": row.parameters or {}}
 
 
 @router.get("", response_model=list[ModelConfigResponse])
-async def list_models(db: AsyncSession = Depends(get_db)):
+async def list_models(db: AsyncSession = Depends(get_db)) -> list[ModelConfigResponse]:
     """List all OCR model configs — merged from YAML defaults and DB overrides."""
     stmt = select(ModelConfigDB)
     result = await db.execute(stmt)
@@ -49,7 +51,7 @@ async def update_model(
     model_name: str,
     body: ModelConfigUpdateRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> ModelConfigResponse:
     """Upsert configuration for a specific OCR model."""
     if model_name not in MODEL_REGISTRY:
         raise HTTPException(

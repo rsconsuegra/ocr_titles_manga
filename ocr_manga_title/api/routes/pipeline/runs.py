@@ -33,7 +33,7 @@ _CANCELABLE_STATUSES = {RunStatus.PENDING, RunStatus.PROCESSING}
 async def trigger_pipeline(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-):
+) -> PipelineActionResponse:
     """Enqueue a pending, failed, completed, or cancelled pipeline run for processing."""
     run = await get_pipeline_run(session=db, run_id=run_id)
     if not run:
@@ -65,7 +65,7 @@ async def trigger_pipeline(
 async def cancel_pipeline_run(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-):
+) -> PipelineActionResponse:
     """Cancel a pending or processing pipeline run."""
     from ocr_manga_title.schemas import utcnow
 
@@ -94,7 +94,7 @@ async def list_runs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-):
+) -> PaginatedResponse[PipelineRunResponse]:
     """List pipeline runs with optional status filtering and pagination."""
     runs = await list_pipeline_runs(
         session=db, status=status, limit=limit, offset=offset
@@ -109,7 +109,7 @@ async def list_runs(
 
 
 @router.get("/runs/{run_id}", response_model=PipelineRunDetailResponse)
-async def get_run_detail(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_run_detail(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> PipelineRunDetailResponse:
     """Retrieve a pipeline run with its OCR and post-processing results."""
     run = await get_pipeline_run_detail(session=db, run_id=run_id)
     if not run:
@@ -133,7 +133,7 @@ _MEDIA_TYPES: dict[str, str] = {
 async def get_run_image(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-):
+) -> FileResponse:
     """Serve the original input image for a pipeline run."""
     run = await get_pipeline_run(session=db, run_id=run_id)
     if not run:

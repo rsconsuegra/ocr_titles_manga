@@ -8,9 +8,11 @@ the DB first and falling back to the environment variable default.
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import logging
 import uuid
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
@@ -22,6 +24,7 @@ from ocr_manga_title.settings import SERVER_SECRET
 logger = logging.getLogger(__name__)
 
 
+@functools.lru_cache(maxsize=1)
 def _fernet() -> Fernet:
     if not SERVER_SECRET:
         raise RuntimeError("SERVER_SECRET is not configured. Set it in .env.")
@@ -30,14 +33,17 @@ def _fernet() -> Fernet:
 
 
 def encrypt_value(plain: str) -> str:
+    """Encrypt a plaintext string using Fernet symmetric encryption."""
     return _fernet().encrypt(plain.encode()).decode()
 
 
 def decrypt_value(token: str) -> str:
+    """Decrypt a Fernet-encrypted token back to plaintext."""
     return _fernet().decrypt(token.encode()).decode()
 
 
 def mask_key(key: str) -> str:
+    """Return a masked representation of an API key for display."""
     if len(key) <= 8:
         return "****"
     return key[:4] + "*" * (len(key) - 8) + key[-4:]
@@ -89,7 +95,7 @@ async def deactivate_key(session: AsyncSession, service_name: str) -> bool:
     return False
 
 
-async def get_credential_info(session: AsyncSession, service_name: str, env_default: str) -> dict:
+async def get_credential_info(session: AsyncSession, service_name: str, env_default: str) -> dict[str, Any]:
     """Return credential status for the UI (masked key, source, active)."""
     stmt = select(ApiCredential).where(
         ApiCredential.service_name == service_name,

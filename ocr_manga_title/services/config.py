@@ -1,9 +1,12 @@
 """Config snapshot helpers for pipeline profiles."""
 
+from typing import Any
+
 from ocr_manga_title.db.models import PipelineProfile
 
 
-def build_run_config_snapshot(profile: PipelineProfile | None) -> dict | None:
+def build_run_config_snapshot(profile: PipelineProfile | None) -> dict[str, Any] | None:
+    """Build a serialisable config snapshot from a pipeline profile."""
     if profile is None:
         return None
     return {

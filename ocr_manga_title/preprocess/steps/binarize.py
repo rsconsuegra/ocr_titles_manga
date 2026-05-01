@@ -1,5 +1,7 @@
 """Image binarization step using Otsu or adaptive thresholding."""
 
+from typing import Any
+
 import cv2
 import numpy as np
 
@@ -19,7 +21,7 @@ class BinarizeStep(BasePreProcessor):
         """Whether the step's runtime dependencies are installed."""
         return True
 
-    def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
+    def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Apply Otsu or adaptive thresholding to produce a binary image."""
         method = config.get("method", "otsu")
         invert = config.get("invert", False)

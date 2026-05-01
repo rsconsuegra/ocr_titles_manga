@@ -2,18 +2,25 @@
 
 import json
 import time
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from ocr_manga_title.api.schemas.ocr import YamlExportResponse
 from ocr_manga_title.api.schemas.preprocess import (
     ExportPipelineRequest,
+    ParamDescriptorResponse,
     PipelineStepResult,
     PreviewPipelineResponse,
     PreviewStepResponse,
     StepDescriptorResponse,
 )
-from ocr_manga_title.preprocess.registry import STEP_ORDER, STEP_REGISTRY, SYNC_BLOCKED_METHODS, get_all_steps
+from ocr_manga_title.preprocess.registry import (
+    STEP_ORDER,
+    STEP_REGISTRY,
+    SYNC_BLOCKED_METHODS,
+    get_all_steps,
+)
 from ocr_manga_title.services.image import decode_bytes, encode_image
 from ocr_manga_title.services.preprocess import get_step_instance
 
@@ -23,7 +30,7 @@ SYNC_BLOCKED_DETAIL = (
 )
 
 
-def _check_sync_blocked(step_name: str, config: dict) -> None:
+def _check_sync_blocked(step_name: str, config: dict[str, Any]) -> None:
     if step_name == "upscale" and config.get("method") in SYNC_BLOCKED_METHODS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -34,7 +41,7 @@ router = APIRouter()
 
 
 @router.get("/steps", response_model=list[StepDescriptorResponse])
-async def list_steps():
+async def list_steps() -> list[StepDescriptorResponse]:
     """Return all available preprocessing step descriptors in canonical order."""
     steps = get_all_steps()
     return [
@@ -42,7 +49,7 @@ async def list_steps():
             name=s.name,
             label=s.label,
             description=s.description,
-            params=[p.__dict__ for p in s.params],
+            params=[ParamDescriptorResponse(**p.__dict__) for p in s.params],
         )
         for s in steps
     ]
@@ -53,7 +60,7 @@ async def preview_step(
     file: UploadFile = File(...),
     step_name: str = Form(...),
     params: str = Form("{}"),
-):
+) -> PreviewStepResponse:
     """Preview a single preprocessing step applied to the given image."""
     if step_name not in STEP_REGISTRY:
         raise HTTPException(
@@ -67,7 +74,7 @@ async def preview_step(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in params",
-        )
+        ) from None
     _check_sync_blocked(step_name, parsed_params)
 
     try:
@@ -106,7 +113,7 @@ async def preview_step(
 async def preview_pipeline(
     file: UploadFile = File(...),
     steps: str = Form("{}"),
-):
+) -> PreviewPipelineResponse:
     """Preview the full preprocessing pipeline, returning an image after each step."""
     try:
         parsed_steps = json.loads(steps)
@@ -114,7 +121,7 @@ async def preview_pipeline(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in steps",
-        )
+        ) from None
 
     try:
         raw = await file.read()
@@ -179,11 +186,11 @@ async def preview_pipeline(
 
 
 @router.post("/export", response_model=YamlExportResponse)
-async def export_pipeline(body: ExportPipelineRequest):
+async def export_pipeline(body: ExportPipelineRequest) -> YamlExportResponse:
     """Export the configured pipeline as a YAML string matching preprocess.yaml format."""
     import yaml
 
-    yaml_steps: dict[str, dict] = {}
+    yaml_steps: dict[str, dict[str, Any]] = {}
     for step_name in STEP_ORDER:
         step_config = dict(body.steps.get(step_name, {}))
         step_config["enabled"] = True

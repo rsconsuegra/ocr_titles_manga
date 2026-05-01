@@ -9,7 +9,6 @@ from ocr_manga_title.engine.base import BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
 from ocr_manga_title.schemas import ModelConfig, OCRResult, TextBlock
 
-
 _MIN_CONFIDENCE = 30
 
 

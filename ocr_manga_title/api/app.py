@@ -1,6 +1,8 @@
-from contextlib import asynccontextmanager
 import asyncio
+import contextlib
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +39,7 @@ from ocr_manga_title.settings import CACHE_SWEEPER_INTERVAL_SECONDS, CORS_ORIGIN
 logger = logging.getLogger(__name__)
 
 
-async def _cache_sweeper():
+async def _cache_sweeper() -> None:
     from ocr_manga_title.db.session import async_session_factory
     from ocr_manga_title.services.cache import evict_expired
 
@@ -54,27 +56,32 @@ async def _cache_sweeper():
         pass
 
 
-def _run_warmup():
+def _run_warmup() -> None:
     import warnings
 
-    warnings.filterwarnings("ignore", category=SyntaxWarning)
     from ocr_manga_title.services.warmup import warmup_models
 
-    warmed = warmup_models()
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=SyntaxWarning)
+        warmed = warmup_models()
     logger.info("Startup warmup finished: %s", warmed)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Manage startup/shutdown lifecycle: warmup, secret check, cache sweeper."""
+    from ocr_manga_title.settings import SERVER_SECRET
+
+    if not SERVER_SECRET:
+        logger.warning("SERVER_SECRET is empty — credentials will not be encrypted")
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _run_warmup)
     task = asyncio.create_task(_cache_sweeper())
     yield
-    task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
+        task.cancel()
         await task
-    except asyncio.CancelledError:
-        pass
 
 
 def create_app() -> FastAPI:
@@ -88,7 +95,7 @@ def create_app() -> FastAPI:
     )
 
     @app.exception_handler(ConfigurationError)
-    async def configuration_error_handler(request: Request, exc: ConfigurationError):
+    async def configuration_error_handler(request: Request, exc: ConfigurationError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": str(exc), "error_code": "configuration_error"},
@@ -97,28 +104,28 @@ def create_app() -> FastAPI:
     @app.exception_handler(ModelNotAvailableError)
     async def model_not_available_handler(
         request: Request, exc: ModelNotAvailableError
-    ):
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": str(exc), "error_code": "model_not_available"},
         )
 
     @app.exception_handler(LLMExtractionError)
-    async def llm_extraction_error_handler(request: Request, exc: LLMExtractionError):
+    async def llm_extraction_error_handler(request: Request, exc: LLMExtractionError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content={"detail": str(exc), "error_code": "llm_extraction_error"},
         )
 
     @app.exception_handler(PermanentError)
-    async def permanent_error_handler(request: Request, exc: PermanentError):
+    async def permanent_error_handler(request: Request, exc: PermanentError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"detail": str(exc), "error_code": "permanent_error"},
         )
 
     @app.exception_handler(MangaOCRError)
-    async def manga_ocr_error_handler(request: Request, exc: MangaOCRError):
+    async def manga_ocr_error_handler(request: Request, exc: MangaOCRError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": str(exc), "error_code": "internal_error"},

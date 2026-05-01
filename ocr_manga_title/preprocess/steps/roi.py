@@ -1,6 +1,7 @@
 """Region-of-interest detection step for preprocessing."""
 
 import logging
+from typing import Any
 
 import cv2
 import numpy as np
@@ -27,7 +28,7 @@ class ROIStep(BasePreProcessor):
         """Whether the step's runtime dependencies are installed."""
         return True
 
-    def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
+    def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Detect and crop the region of interest from the image."""
         method = config.get("method", "contour")
 
@@ -53,8 +54,8 @@ class ROIStep(BasePreProcessor):
         }
 
     def _contour_detect(
-        self, image: np.ndarray, config: dict
-    ) -> tuple[np.ndarray, dict]:
+        self, image: np.ndarray, config: dict[str, Any]
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         min_area = config.get("min_area", 500)
         padding = config.get("padding", 10)
         merge_overlap = config.get("merge_overlap", 0.3)
@@ -70,11 +71,11 @@ class ROIStep(BasePreProcessor):
             thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
-        rects = []
+        rects: list[tuple[int, int, int, int]] = []
         for contour in contours:
             area = cv2.contourArea(contour)
             if area >= min_area:
-                rects.append(cv2.boundingRect(contour))
+                rects.append(tuple(cv2.boundingRect(contour)))  # type: ignore[arg-type]
 
         if not rects:
             return image, {
@@ -85,9 +86,9 @@ class ROIStep(BasePreProcessor):
             }
 
         merged = self._merge_rects(rects, merge_overlap)
-        merged = self._merge_all(merged)
+        final_rect = self._merge_all(merged)
 
-        x, y, bw, bh = merged
+        x, y, bw, bh = final_rect
         coverage = (bw * bh) / (image.shape[0] * image.shape[1])
         if coverage > 0.95:
             logger.debug("Detected region covers >95% of image, skipping crop")
@@ -120,7 +121,7 @@ class ROIStep(BasePreProcessor):
             "coverage": round(coverage, 3),
         }
 
-    def _merge_rects(self, rects: list[tuple], iou_threshold: float) -> list[tuple]:
+    def _merge_rects(self, rects: list[tuple[int, int, int, int]], iou_threshold: float) -> list[tuple[int, int, int, int]]:
         if len(rects) <= 1:
             return rects
 
@@ -147,7 +148,7 @@ class ROIStep(BasePreProcessor):
 
         return merged
 
-    def _merge_all(self, rects: list[tuple]) -> tuple[int, int, int, int]:
+    def _merge_all(self, rects: list[tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
         if not rects:
             return (0, 0, 0, 0)
         x = min(r[0] for r in rects)
@@ -157,7 +158,7 @@ class ROIStep(BasePreProcessor):
         return (x, y, x2 - x, y2 - y)
 
     @staticmethod
-    def _compute_iou(r1: tuple, r2: tuple) -> float:
+    def _compute_iou(r1: tuple[int, int, int, int], r2: tuple[int, int, int, int]) -> float:
         x1 = max(r1[0], r2[0])
         y1 = max(r1[1], r2[1])
         x2 = min(r1[0] + r1[2], r2[0] + r2[2])
@@ -174,7 +175,7 @@ class ROIStep(BasePreProcessor):
         return intersection / union if union > 0 else 0.0
 
     @staticmethod
-    def _union_rect(r1: tuple, r2: tuple) -> tuple:
+    def _union_rect(r1: tuple[int, int, int, int], r2: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         x = min(r1[0], r2[0])
         y = min(r1[1], r2[1])
         x2 = max(r1[0] + r1[2], r2[0] + r2[2])

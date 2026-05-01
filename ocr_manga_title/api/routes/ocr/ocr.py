@@ -3,6 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -25,6 +26,7 @@ from ocr_manga_title.db.models import ModelConfig as ModelConfigDB
 from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
 from ocr_manga_title.services.cache import hash_bytes, run_ocr_cached
 from ocr_manga_title.services.ocr import (
+    _parse_languages,
     check_model_availability,
     run_llm_extraction,
 )
@@ -33,7 +35,7 @@ router = APIRouter()
 
 
 @router.get("/registry", response_model=list[ModelDescriptorResponse])
-async def list_ocr_models(db: AsyncSession = Depends(get_db)):
+async def list_ocr_models(db: AsyncSession = Depends(get_db)) -> list[ModelDescriptorResponse]:
     """Return all OCR model descriptors with availability and effective enabled status."""
     stmt = select(ModelConfigDB)
     result = await db.execute(stmt)
@@ -79,7 +81,7 @@ async def run_ocr(
     llm_max_ocr_chars: str = Form(""),
     reasoning_enabled: str = Form(""),
     db: AsyncSession = Depends(get_db),
-):
+) -> OCRRunResponse:
     """Run a single OCR model on the given image, optionally with LLM post-processing."""
     descriptor = get_model(model_name)
     if not descriptor:
@@ -94,7 +96,7 @@ async def run_ocr(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in params",
-        )
+        ) from None
 
     raw, tmp_path = await save_uploaded_image(file)
     try:
@@ -127,11 +129,11 @@ async def run_ocr(
 
 
 @router.post("/export", response_model=YamlExportResponse)
-async def export_ocr_config(body: OCRExportRequest):
+async def export_ocr_config(body: OCRExportRequest) -> YamlExportResponse:
     """Export the configured OCR models as YAML matching ocrs.yaml format."""
     import yaml
 
-    models_yaml: dict[str, dict] = {}
+    models_yaml: dict[str, dict[str, Any]] = {}
     for name, descriptor in MODEL_REGISTRY.items():
         override = body.models.get(name, {})
         params = {p.name: p.default for p in descriptor.params}
@@ -139,10 +141,7 @@ async def export_ocr_config(body: OCRExportRequest):
 
         if "languages" in params:
             lang = params.pop("languages")
-            if isinstance(lang, str) and "+" in lang:
-                params["languages"] = lang.split("+")
-            else:
-                params["languages"] = [lang] if isinstance(lang, str) else lang
+            params["languages"] = _parse_languages(lang)
 
         models_yaml[name] = {"enabled": override.get("enabled", True), **params}
 

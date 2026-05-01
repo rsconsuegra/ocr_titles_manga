@@ -7,6 +7,8 @@ from ocr_manga_title.api.schemas.pipeline import PipelineRunResponse
 
 
 class BatchRunResponse(BaseModel):
+    """Summary schema for a batch run."""
+
     id: uuid.UUID
     name: str | None = None
     status: str
@@ -20,4 +22,6 @@ class BatchRunResponse(BaseModel):
 
 
 class BatchRunDetailResponse(BatchRunResponse):
+    """Detailed batch run response including individual pipeline runs."""
+
     runs: list[PipelineRunResponse] = []

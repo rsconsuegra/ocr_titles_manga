@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -7,9 +8,9 @@ from sqlalchemy.orm import selectinload
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.routes._helpers import (
+    resolve_profile_snapshot,
     validate_and_save_file,
     validate_file_count,
-    resolve_profile_snapshot,
 )
 from ocr_manga_title.api.schemas.batch import BatchRunDetailResponse, BatchRunResponse
 from ocr_manga_title.api.schemas.pipeline import (
@@ -33,8 +34,8 @@ async def _save_uploaded_files(
     files: list[UploadFile],
     batch_id: uuid.UUID,
     db: AsyncSession,
-    config_snapshot: dict | None,
-) -> list:
+    config_snapshot: dict[str, Any] | None,
+) -> list[Any]:
     runs = []
     for file in files:
         save_path = await validate_and_save_file(file)
@@ -56,7 +57,8 @@ async def create_batch(
     name: str | None = Form(default=None),
     profile_id: uuid.UUID | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
-):
+) -> BatchRunDetailResponse:
+    """Create a new batch run from uploaded images."""
     validate_file_count(files)
 
     config_snapshot = await resolve_profile_snapshot(db, profile_id)
@@ -84,7 +86,8 @@ async def create_batch(
 @router.post("/{batch_id}/trigger", response_model=BatchRunResponse)
 async def trigger_batch(
     batch_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+) -> BatchRunResponse:
+    """Enqueue all pending runs in a batch for processing."""
     stmt = (
         select(BatchRun)
         .where(BatchRun.id == batch_id)
@@ -118,7 +121,8 @@ async def list_batches(
     limit: int = 20,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-):
+) -> PaginatedResponse[BatchRunResponse]:
+    """List batch runs with optional status filtering and pagination."""
     batches = await list_batch_runs(db, status=status, limit=limit, offset=offset)
     total = await count_batch_runs(db, status=status)
     return PaginatedResponse(
@@ -132,7 +136,8 @@ async def list_batches(
 @router.get("/{batch_id}", response_model=BatchRunDetailResponse)
 async def get_batch_detail(
     batch_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+) -> BatchRunDetailResponse:
+    """Retrieve a batch run with all its pipeline runs."""
     stmt = (
         select(BatchRun)
         .where(BatchRun.id == batch_id)

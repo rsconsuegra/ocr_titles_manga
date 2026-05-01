@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -125,7 +126,8 @@ class UpscaleStep(BasePreProcessor):
             return self._get_model_path(method, scale).exists()
         return False
 
-    def process(self, image: np.ndarray, config: dict) -> tuple[np.ndarray, dict]:
+    def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
+        """Upscale the image according to the provided config."""
         method = config.get("method", "cubic")
         scale_factor = config.get("scale_factor", 2)
 
@@ -154,7 +156,7 @@ class UpscaleStep(BasePreProcessor):
         logger.info("Upscaling with %s x%d finished in %dms", method.upper(), scale_factor, elapsed_ms)
         return result, meta
 
-    def _upscale_cubic(self, image: np.ndarray, scale: int) -> tuple[np.ndarray, dict]:
+    def _upscale_cubic(self, image: np.ndarray, scale: int) -> tuple[np.ndarray, dict[str, Any]]:
         h, w = image.shape[:2]
         result = cv2.resize(
             image, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC
@@ -185,7 +187,7 @@ class UpscaleStep(BasePreProcessor):
 
     def _upscale_dnn(
         self, image: np.ndarray, method: str, scale: int
-    ) -> tuple[np.ndarray, dict]:
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         h, w = image.shape[:2]
         estimated_peak = self._estimate_dnn_peak_bytes(h, w, method, scale)
         available = self._available_memory_bytes()
@@ -217,7 +219,7 @@ class UpscaleStep(BasePreProcessor):
                 ) from e
 
         model_path = self._get_model_path(method, scale)
-        sr = cv2.dnn_superres.DnnSuperResImpl_create()
+        sr = cv2.dnn_superres.DnnSuperResImpl_create()  # type: ignore[attr-defined]
         sr.readModel(str(model_path))
         sr.setModel(method.lower(), scale)
 
@@ -248,7 +250,7 @@ class UpscaleStep(BasePreProcessor):
 
     def _upscale_realesrgan(
         self, image: np.ndarray, scale: int
-    ) -> tuple[np.ndarray, dict]:
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         try:
             import realesrgan  # noqa: F401
         except ImportError:

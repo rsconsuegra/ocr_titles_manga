@@ -23,16 +23,22 @@ atexit.register(_cleanup_temp_files)
 
 
 def _create_temp_file(suffix: str = ".png") -> str:
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    tmp.close()
-    _temp_files.append(tmp.name)
-    return tmp.name
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        name = tmp.name
+    _temp_files.append(name)
+    return name
 
 
 def decode_image(data_url: str) -> np.ndarray:
     """Decode a base64 data-URL into an OpenCV BGR numpy array."""
+    from ocr_manga_title.settings import MAX_FILE_SIZE
+
     if "," in data_url:
         data_url = data_url.split(",", 1)[1]
+    if len(data_url) > MAX_FILE_SIZE * 2:
+        raise ValueError(
+            f"Image data exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit"
+        )
     raw = base64.b64decode(data_url)
     pil_img = Image.open(BytesIO(raw)).convert("RGB")
     return np.array(pil_img)[:, :, ::-1].copy()

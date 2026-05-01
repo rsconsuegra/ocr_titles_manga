@@ -1,13 +1,13 @@
 import csv
 import io
 import uuid
+from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func as sa_func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from ocr_manga_title.schemas import utcnow
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.schemas.catalog import (
@@ -18,6 +18,7 @@ from ocr_manga_title.api.schemas.pipeline import PaginatedResponse
 from ocr_manga_title.db.crud import get_catalog_entry, update_catalog_entry
 from ocr_manga_title.db.enums import CatalogStatus
 from ocr_manga_title.db.models import CatalogEntry
+from ocr_manga_title.schemas import utcnow
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ async def list_catalog(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-):
+) -> PaginatedResponse[CatalogEntryResponse]:
     """List catalog entries with optional filtering and pagination."""
     stmt = select(CatalogEntry).order_by(CatalogEntry.created_at.desc())
     count_stmt = select(sa_func.count()).select_from(CatalogEntry)
@@ -60,9 +61,9 @@ async def list_catalog(
 
 
 @router.get("/export")
-async def export_catalog(db: AsyncSession = Depends(get_db)):
+async def export_catalog(db: AsyncSession = Depends(get_db)) -> StreamingResponse:
     """Export all catalog entries as a streaming CSV download."""
-    CHUNK_SIZE = 500
+    chunk_size = 500
 
     def _csv_header() -> str:
         buf = io.StringIO()
@@ -74,7 +75,7 @@ async def export_catalog(db: AsyncSession = Depends(get_db)):
         )
         return buf.getvalue()
 
-    def _csv_row(entry) -> str:
+    def _csv_row(entry: Any) -> str:
         buf = io.StringIO()
         csv.writer(buf).writerow(
             [
@@ -91,7 +92,7 @@ async def export_catalog(db: AsyncSession = Depends(get_db)):
         )
         return buf.getvalue()
 
-    async def _generate():
+    async def _generate() -> AsyncIterator[str]:
         yield _csv_header()
         offset = 0
         while True:
@@ -99,7 +100,7 @@ async def export_catalog(db: AsyncSession = Depends(get_db)):
                 select(CatalogEntry)
                 .order_by(CatalogEntry.created_at.desc())
                 .offset(offset)
-                .limit(CHUNK_SIZE)
+                .limit(chunk_size)
             )
             result = await db.execute(stmt)
             chunk = result.scalars().all()
@@ -107,7 +108,7 @@ async def export_catalog(db: AsyncSession = Depends(get_db)):
                 break
             for entry in chunk:
                 yield _csv_row(entry)
-            offset += CHUNK_SIZE
+            offset += chunk_size
 
     return StreamingResponse(
         _generate(),
@@ -117,7 +118,7 @@ async def export_catalog(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{entry_id}", response_model=CatalogEntryResponse)
-async def get_single_catalog(entry_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_single_catalog(entry_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> CatalogEntryResponse:
     """Retrieve a single catalog entry by ID."""
     entry = await get_catalog_entry(session=db, entry_id=entry_id)
     if not entry:
@@ -132,7 +133,7 @@ async def update_catalog(
     entry_id: uuid.UUID,
     body: CatalogUpdateRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> CatalogEntryResponse:
     """Update fields on an existing catalog entry."""
     entry = await get_catalog_entry(session=db, entry_id=entry_id)
     if not entry:
@@ -140,7 +141,7 @@ async def update_catalog(
             status_code=status.HTTP_404_NOT_FOUND, detail="Catalog entry not found"
         )
 
-    updates = {}
+    updates: dict[str, Any] = {}
     if body.status is not None:
         if body.status not in (s.value for s in CatalogStatus):
             raise HTTPException(
