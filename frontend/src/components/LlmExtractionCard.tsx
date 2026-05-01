@@ -10,6 +10,19 @@ interface LlmExtractionCardProps {
   confidence: number;
   method?: string;
   rawResponse?: string | null;
+  extraMetadata?: Record<string, string> | null;
+}
+
+const LABEL_OVERRIDES: Record<string, string> = {
+  author: "Author",
+  social_page: "Social Page",
+};
+
+function formatLabel(key: string): string {
+  if (LABEL_OVERRIDES[key]) return LABEL_OVERRIDES[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export default function LlmExtractionCard({
@@ -19,6 +32,7 @@ export default function LlmExtractionCard({
   confidence,
   method,
   rawResponse,
+  extraMetadata,
 }: LlmExtractionCardProps) {
   const [showRaw, setShowRaw] = useState(false);
   const hasStructuredData = !!(titleEn || titleJa || code);
@@ -46,6 +60,13 @@ export default function LlmExtractionCard({
             <span className="font-mono text-charcoal">{code}</span>
           </div>
         )}
+        {extraMetadata &&
+          Object.entries(extraMetadata).map(([key, value]) => (
+            <div key={key}>
+              <span className="text-sand">{formatLabel(key)}:</span>{" "}
+              <span className="font-medium text-charcoal">{value}</span>
+            </div>
+          ))}
         <div>
           <span className="text-sand">Confidence:</span>
           <ConfidenceMeter value={confidence} />

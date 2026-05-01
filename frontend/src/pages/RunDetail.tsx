@@ -229,6 +229,7 @@ export default function RunDetail() {
                         confidence={pp.confidence}
                         method={pp.processing_type}
                         rawResponse={pp.raw_response}
+                        extraMetadata={pp.extra_metadata}
                       />
                       {editingResult === pp.id ? (
                         <div className="mt-3 pt-3 border-t border-linen space-y-3">

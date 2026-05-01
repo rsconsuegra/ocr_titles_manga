@@ -252,6 +252,7 @@ export default function OcrPlayground() {
                   confidence={result.llm.confidence}
                   method={result.llm.source_method}
                   rawResponse={result.llm.raw_response}
+                  extraMetadata={result.llm.extra_metadata}
                 />
               )}
             </>

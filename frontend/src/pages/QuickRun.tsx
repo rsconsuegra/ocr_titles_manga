@@ -425,6 +425,7 @@ export default function QuickRun() {
               code={result.llm.code}
               confidence={result.llm.confidence}
               rawResponse={result.llm.raw_response}
+              extraMetadata={result.llm.extra_metadata}
             />
           )}
         </div>
