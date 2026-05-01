@@ -1,5 +1,5 @@
 import type { OllamaModelInfo, OllamaStatusResponse, OpenRouterModel } from "../api/types";
-import { DsoSelect } from "./dso";
+import { Select } from "./ui";
 
 interface LlmConfigSectionProps {
   enableLlm: boolean;
@@ -43,80 +43,80 @@ export default function LlmConfigSection({
   return (
     <div className="space-y-2">
       <label
-        className={`flex items-center gap-2 text-sm ${llmDisabled ? "cursor-not-allowed text-muted" : "text-bright"}`}
+        className={`flex items-center gap-2 text-sm ${llmDisabled ? "cursor-not-allowed text-sand" : "text-charcoal"}`}
       >
         <input
           type="checkbox"
           checked={enableLlm}
           onChange={(e) => onEnableLlmChange(e.target.checked)}
           disabled={llmDisabled}
-          className="rounded border-highlight/40 bg-inset accent-teal disabled:opacity-50"
+          className="rounded border-linen bg-linen accent-indigo disabled:opacity-50"
         />
         {label}
       </label>
-      {llmDisabled && <p className="text-xs text-muted">{llmDisabledReason}</p>}
+      {llmDisabled && <p className="text-xs text-sand">{llmDisabledReason}</p>}
       {enableLlm && !llmDisabled && (
         <div className="ml-6 space-y-2">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted">Provider:</span>
-            <label className="flex items-center gap-1 text-xs text-bright">
+            <span className="text-xs text-sand">Provider:</span>
+            <label className="flex items-center gap-1 text-xs text-charcoal">
               <input
                 type="radio"
                 name={radioName}
                 checked={llmProvider === "openrouter"}
                 onChange={() => onLlmProviderChange("openrouter")}
-                className="accent-teal"
+                className="accent-indigo"
               />
               OpenRouter
             </label>
-            <label className="flex items-center gap-1 text-xs text-bright">
+            <label className="flex items-center gap-1 text-xs text-charcoal">
               <input
                 type="radio"
                 name={radioName}
                 checked={llmProvider === "ollama"}
                 onChange={() => onLlmProviderChange("ollama")}
-                className="accent-teal"
+                className="accent-indigo"
               />
               Ollama
             </label>
           </div>
           {llmProvider === "openrouter" && openRouterModels.length > 0 && (
-            <DsoSelect
+            <Select
               label="Model"
               value={openRouterModel}
               onChange={(e) => onOpenRouterModelChange(e.target.value)}
-            >
-              <option value="">Default (Gemini 2.5 Flash)</option>
-              {openRouterModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </DsoSelect>
+              options={[
+                { value: "", label: "Default (Gemini 2.5 Flash)" },
+                ...openRouterModels.map((m) => ({ value: m.id, label: m.label })),
+              ]}
+            />
           )}
           {llmProvider === "openrouter" && (
-            <label className="flex items-center gap-2 text-xs text-bright">
+            <label className="flex items-center gap-2 text-xs text-charcoal">
               <input
                 type="checkbox"
                 checked={reasoningEnabled}
                 onChange={(e) => onReasoningEnabledChange(e.target.checked)}
-                className="rounded border-highlight/40 bg-inset accent-teal"
+                className="rounded border-linen bg-linen accent-indigo"
               />
               Enable reasoning
             </label>
           )}
           {llmProvider === "ollama" && ollamaStatus?.configured && ollamaModels.length > 0 && (
-            <DsoSelect
+            <Select
               label="LLM Model"
               value={llmModel}
               onChange={(e) => onLlmModelChange(e.target.value)}
-            >
-              <option value="">Default</option>
-              {ollamaModels.map((m) => (
-                <option key={m.name} value={m.name}>{m.name}</option>
-              ))}
-            </DsoSelect>
+              options={[
+                { value: "", label: "Default" },
+                ...ollamaModels.map((m) => ({ value: m.name, label: m.name })),
+              ]}
+            />
           )}
           {llmProvider === "ollama" && ollamaStatus?.configured && ollamaModels.length === 0 && (
-            <p className="text-xs text-muted">No Ollama models found. Make sure Ollama is running.</p>
+            <p className="text-xs text-sand">
+              No Ollama models found. Make sure Ollama is running.
+            </p>
           )}
         </div>
       )}

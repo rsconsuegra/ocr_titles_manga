@@ -3,13 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { getDashboardStats, listRuns } from "../api/pipeline";
 import type { PipelineRunResponse } from "../api/types";
-import {
-  DsoBadge,
-  DsoButton,
-  DsoCard,
-  DsoScrew,
-  DsoVentGrille,
-} from "../components/dso";
+import { Badge, Button, Card, DashboardSkeleton, EmptyState, Table } from "../components/ui";
 
 const statusVariant = {
   pending: "pending" as const,
@@ -42,165 +36,122 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <span className="tech-label-bright breathing">Initializing...</span>
-      </div>
-    );
-  }
+  if (loading) return <DashboardSkeleton />;
 
   if (!stats) {
     return (
       <div className="flex items-center justify-center py-20">
-        <span className="tech-label text-amber">Signal Lost</span>
+        <span className="text-sand">Unable to load dashboard data</span>
       </div>
     );
   }
 
-  const metrics = [
-    { label: "TOTAL", value: stats.total, led: "led-off" },
-    { label: "COMPLETED", value: stats.completed, led: "led-active" },
-    { label: "FAILED", value: stats.failed, led: "led-amber" },
-    { label: "CANCELLED", value: stats.cancelled, led: "led-off" },
-    { label: "PROCESSING", value: stats.processing, led: "led-active" },
-    { label: "PENDING", value: stats.pending, led: "led-off" },
-    { label: "SUCCESS", value: `${stats.success_rate}%`, led: "led-active" },
+  const quickActions = [
+    {
+      title: "Upload Images",
+      description: "Upload manga images for batch OCR processing",
+      route: "/run/pipeline",
+    },
+    {
+      title: "Quick Run",
+      description: "Run the full pipeline on a single image",
+      route: "/run/quick",
+    },
+    {
+      title: "OCR Playground",
+      description: "Test individual OCR models on sample images",
+      route: "/playground/ocr",
+    },
+  ];
+
+  const statCards = [
+    { label: "Total Runs", value: stats.total },
+    { label: "Completed", value: stats.completed },
+    { label: "Failed", value: stats.failed },
+    { label: "Avg Confidence", value: `${stats.success_rate}%` },
   ];
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="neo-panel relative p-6">
-        <DsoScrew className="absolute left-3 top-3" />
-        <DsoScrew className="absolute right-3 top-3" />
-        <DsoScrew className="absolute bottom-3 left-3" />
-        <DsoScrew className="absolute bottom-3 right-3" />
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* Top-Left: Hero */}
-          <DsoCard variant="inset" className="relative flex flex-col justify-between">
-            <DsoScrew className="absolute left-2 top-2" />
-            <DsoScrew className="absolute right-2 top-2" />
-            <div>
-              <p className="tech-label mb-2 text-teal">Oscilloscope Control Panel</p>
-              <h1
-                className="font-display font-bold text-bright leading-tight text-[clamp(1.75rem,3vw,2.75rem)]"
-              >
-                MANGA OCR
-              </h1>
-              <p className="mt-2 text-sm text-muted">
-                Digital Storage OCR Pipeline &mdash; Real-time manga text extraction engine
-              </p>
-            </div>
-            <div className="mt-4 flex items-end justify-between">
-              <DsoVentGrille />
-              <div className="flex items-center gap-2">
-                <span className="led led-active" />
-                <span className="tech-label-bright">Online</span>
-              </div>
-            </div>
-          </DsoCard>
-
-          {/* Top-Right: Service Matrix LCD */}
-          <DsoCard variant="lcd" className="lcd-graticule">
-            <div className="absolute inset-0 z-0 rounded-lg border border-teal/10" />
-            <div className="relative z-10">
-              <p className="tech-label mb-3 text-teal">Service Matrix</p>
-              <div className="grid grid-cols-3 gap-px">
-                {metrics.map((m) => (
-                  <div
-                    key={m.label}
-                    className="flex flex-col items-center gap-1 rounded-sm px-2 py-3 transition-colors duration-150 hover:bg-teal/6"
-                  >
-                    <span className={`led ${m.led}`} />
-                    <span className="font-display text-xl font-bold text-bright">
-                      {m.value}
-                    </span>
-                    <span className="tech-label">{m.label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 border-t border-teal/12 pt-2">
-                <div className="flex items-center justify-between">
-                  <span className="tech-label">Pipeline Status</span>
-                  <div className="flex items-center gap-2">
-                    <span className="led led-active" />
-                    <span className="text-xs text-teal">Nominal</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </DsoCard>
-
-          {/* Bottom-Left: Tactical Controls */}
-          <DsoCard variant="flat">
-            <p className="tech-label mb-4 text-teal">Tactical Controls</p>
-            <div className="flex flex-wrap gap-3">
-              <DsoButton onClick={() => navigate("/upload")}>
-                Upload Images
-              </DsoButton>
-              <DsoButton variant="secondary" onClick={() => navigate("/run/quick")}>
-                Quick Run
-              </DsoButton>
-              <DsoButton variant="secondary" onClick={() => navigate("/playground/ocr")}>
-                OCR Test
-              </DsoButton>
-              <DsoButton variant="secondary" onClick={() => navigate("/playground/preprocess")}>
-                Preprocess
-              </DsoButton>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-4 border-t border-highlight/20 pt-4">
-              <div>
-                <p className="font-display text-lg font-bold text-bright">{stats.total}</p>
-                <p className="tech-label">Total Ops</p>
-              </div>
-              <div>
-                <p className="font-display text-lg font-bold text-teal">{stats.success_rate}%</p>
-                <p className="tech-label">Accuracy</p>
-              </div>
-              <div>
-                <p className="font-display text-lg font-bold text-amber">
-                  {stats.failed + stats.processing}
-                </p>
-                <p className="tech-label">Alerts</p>
-              </div>
-            </div>
-          </DsoCard>
-
-          {/* Bottom-Right: Recent Runs LCD Readout */}
-          <DsoCard variant="lcd" className="lcd-graticule">
-            <div className="relative z-10">
-              <p className="tech-label mb-3 text-teal">Recent Runs</p>
-              {recentRuns.length === 0 ? (
-                <p className="text-sm text-muted py-4 text-center">No signal detected</p>
-              ) : (
-                <div className="space-y-1">
-                  {recentRuns.map((run, i) => (
-                    <button
-                      key={run.id}
-                      onClick={() => navigate(`/runs/${run.id}`)}
-                      className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition-colors duration-100 hover:bg-teal/6"
-                    >
-                      <span className="tech-label w-4 text-right tabular-nums">{i + 1}</span>
-                      <span className="font-mono text-xs text-bright/80">{run.id.slice(0, 8)}</span>
-                      <span className="flex-1 truncate text-xs text-muted">
-                        {run.input_image_path.split("/").pop()}
-                      </span>
-                      <DsoBadge
-                        variant={statusVariant[run.status as keyof typeof statusVariant] ?? "default"}
-                        led={true}
-                        className="text-[10px]"
-                      >
-                        {run.status}
-                      </DsoBadge>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </DsoCard>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-ink mb-1">Welcome to Manga OCR</h1>
+        <p className="text-sand font-body text-sm">Extract and catalog manga titles with OCR</p>
       </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {quickActions.map((action) => (
+          <Card key={action.route} hover>
+            <h3 className="font-display text-base font-semibold text-ink mb-1">{action.title}</h3>
+            <p className="text-sm text-sand mb-4">{action.description}</p>
+            <Button variant="ghost" onClick={() => navigate(action.route)}>
+              Go &rarr;
+            </Button>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        {statCards.map((stat) => (
+          <Card key={stat.label} padding="sm">
+            <span className="label-text">{stat.label}</span>
+            <p className="font-display text-2xl font-bold text-ink mt-1">{stat.value}</p>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <Card.Header title="Recent Runs">
+          <Button variant="ghost" onClick={() => navigate("/runs")}>
+            View All &rarr;
+          </Button>
+        </Card.Header>
+        {recentRuns.length === 0 ? (
+          <EmptyState
+            title="No recent runs"
+            description="Upload images to start processing"
+            actionLabel="Upload Images"
+            onAction={() => navigate("/run/pipeline")}
+          />
+        ) : (
+          <Table
+            columns={[
+              {
+                key: "input_image_path",
+                header: "Image",
+                render: (run: PipelineRunResponse) => (
+                  <span className="truncate max-w-48 block">
+                    {run.input_image_path.split("/").pop()}
+                  </span>
+                ),
+              },
+              {
+                key: "status",
+                header: "Status",
+                render: (run: PipelineRunResponse) => (
+                  <Badge
+                    status={statusVariant[run.status as keyof typeof statusVariant] ?? "default"}
+                    size="sm"
+                  >
+                    {run.status}
+                  </Badge>
+                ),
+              },
+              {
+                key: "created_at",
+                header: "Created",
+                render: (run: PipelineRunResponse) => (
+                  <span className="text-xs text-sand">
+                    {new Date(run.created_at).toLocaleString()}
+                  </span>
+                ),
+              },
+            ]}
+            data={recentRuns}
+            onRowClick={(run) => navigate(`/runs/${(run as PipelineRunResponse).id}`)}
+            emptyMessage="No recent runs"
+          />
+        )}
+      </Card>
     </div>
   );
 }

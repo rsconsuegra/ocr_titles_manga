@@ -1,8 +1,4 @@
-import type {
-  BatchRunDetailResponse,
-  BatchRunResponse,
-  PaginatedResponse,
-} from "./types";
+import type { BatchRunDetailResponse, BatchRunResponse, PaginatedResponse } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -30,9 +26,7 @@ export async function createBatch(
   });
 }
 
-export async function triggerBatch(
-  batchId: string,
-): Promise<BatchRunResponse> {
+export async function triggerBatch(batchId: string): Promise<BatchRunResponse> {
   return apiFetch<BatchRunResponse>(`/api/v1/batches/${batchId}/trigger`, {
     method: "POST",
   });
@@ -51,8 +45,6 @@ export async function listBatches(params?: {
   return apiFetch(`/api/v1/batches${qs ? `?${qs}` : ""}`);
 }
 
-export async function getBatchDetail(
-  batchId: string,
-): Promise<BatchRunDetailResponse> {
+export async function getBatchDetail(batchId: string): Promise<BatchRunDetailResponse> {
   return apiFetch<BatchRunDetailResponse>(`/api/v1/batches/${batchId}`);
 }

@@ -19,8 +19,12 @@ export function useOllamaModels(): OllamaModelsData {
       .then((s) => {
         setStatus(s);
         if (s.configured) {
-          getOllamaVisionModels().then(setVisionModels).catch(() => {});
-          getOllamaLlmModels().then(setLlmModels).catch(() => {});
+          getOllamaVisionModels()
+            .then(setVisionModels)
+            .catch(() => {});
+          getOllamaLlmModels()
+            .then(setLlmModels)
+            .catch(() => {});
         }
       })
       .catch(() => {});

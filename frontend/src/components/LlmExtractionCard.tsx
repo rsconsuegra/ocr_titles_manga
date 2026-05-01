@@ -1,5 +1,7 @@
+import { useState } from "react";
+
 import ConfidenceMeter from "./ConfidenceMeter";
-import { DsoCard } from "./dso";
+import { Card } from "./ui";
 
 interface LlmExtractionCardProps {
   titleEn?: string | null;
@@ -7,6 +9,7 @@ interface LlmExtractionCardProps {
   code?: string | null;
   confidence: number;
   method?: string;
+  rawResponse?: string | null;
 }
 
 export default function LlmExtractionCard({
@@ -15,40 +18,61 @@ export default function LlmExtractionCard({
   code,
   confidence,
   method,
+  rawResponse,
 }: LlmExtractionCardProps) {
+  const [showRaw, setShowRaw] = useState(false);
+  const hasStructuredData = !!(titleEn || titleJa || code);
+  const hasRawResponse = !!rawResponse && rawResponse.trim().length > 0;
+
   return (
-    <DsoCard variant="lcd">
-      <h3 className="mb-2 text-sm font-semibold text-teal">LLM Extraction</h3>
+    <Card accent="indigo">
+      <h3 className="mb-2 text-sm font-semibold text-indigo">LLM Extraction</h3>
       <div className="space-y-1 text-sm">
         {titleEn && (
           <div>
-            <span className="text-muted">Title (EN):</span>{" "}
-            <span className="font-medium text-bright">{titleEn}</span>
+            <span className="text-sand">Title (EN):</span>{" "}
+            <span className="font-medium text-charcoal">{titleEn}</span>
           </div>
         )}
         {titleJa && (
           <div>
-            <span className="text-muted">Title (JA):</span>{" "}
-            <span className="font-medium text-bright">{titleJa}</span>
+            <span className="text-sand">Title (JA):</span>{" "}
+            <span className="font-medium text-charcoal">{titleJa}</span>
           </div>
         )}
         {code && (
           <div>
-            <span className="text-muted">Code:</span>{" "}
-            <span className="font-mono text-bright">{code}</span>
+            <span className="text-sand">Code:</span>{" "}
+            <span className="font-mono text-charcoal">{code}</span>
           </div>
         )}
         <div>
-          <span className="text-muted">Confidence:</span>
+          <span className="text-sand">Confidence:</span>
           <ConfidenceMeter value={confidence} />
         </div>
         {method && (
           <div>
-            <span className="text-muted">Method:</span>{" "}
-            <span className="text-bright">{method}</span>
+            <span className="text-sand">Method:</span>{" "}
+            <span className="text-charcoal">{method}</span>
+          </div>
+        )}
+        {hasRawResponse && !hasStructuredData && (
+          <div className="mt-2">
+            <button
+              type="button"
+              className="text-xs text-indigo hover:underline cursor-pointer"
+              onClick={() => setShowRaw(!showRaw)}
+            >
+              {showRaw ? "Hide" : "Show"} raw LLM output
+            </button>
+            {showRaw && (
+              <pre className="mt-1 whitespace-pre-wrap rounded bg-linen p-2 text-xs text-charcoal">
+                {rawResponse}
+              </pre>
+            )}
           </div>
         )}
       </div>
-    </DsoCard>
+    </Card>
   );
 }

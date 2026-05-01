@@ -21,6 +21,7 @@ export interface PostProcessingResultDetail {
   code: string | null;
   confidence: number;
   processing_type: string;
+  raw_response: string | null;
   created_at: string;
 }
 
@@ -132,6 +133,7 @@ export interface LLMResultData {
   code: string | null;
   confidence: number;
   source_method: string;
+  raw_response: string | null;
 }
 
 export interface OCRRunResponse {

@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { listBatches } from "../api/batch";
 import type { BatchRunResponse } from "../api/types";
-import { DsoBadge, DsoButton, DsoPagination, DsoProgressBar, DsoTable } from "../components/dso";
+import { Badge, Button, Card, EmptyState, Pagination, ProgressBar } from "../components/ui";
 
 const LIMIT = 20;
 
-const statusVariant: Record<string, "completed" | "processing" | "failed" | "pending" | "default"> = {
-  completed: "completed",
-  processing: "processing",
-  partial_failure: "failed",
-  failed: "failed",
-  pending: "pending",
-};
+const statusVariant: Record<string, "completed" | "processing" | "failed" | "pending" | "default"> =
+  {
+    completed: "completed",
+    processing: "processing",
+    partial_failure: "failed",
+    failed: "failed",
+    pending: "pending",
+  };
 
 export default function BatchRuns() {
+  const navigate = useNavigate();
   const [batches, setBatches] = useState<BatchRunResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -45,84 +47,81 @@ export default function BatchRuns() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-bright">Batch Runs</h1>
+        <h1 className="font-display text-xl font-bold text-ink">Batch Runs</h1>
         <Link to="/run/pipeline">
-          <DsoButton>New Batch</DsoButton>
+          <Button>New Batch</Button>
         </Link>
       </div>
 
       {error && (
-        <DsoBadge variant="failed" className="mb-4 inline-flex">{error}</DsoBadge>
+        <Badge status="failed" className="mb-4 inline-flex">
+          {error}
+        </Badge>
       )}
 
       {loading ? (
-        <p className="tech-label breathing">Scanning...</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-40 rounded-lg bg-linen animate-pulse" />
+          ))}
+        </div>
       ) : batches.length === 0 ? (
-        <p className="text-sm text-muted">No batch runs detected.</p>
+        <EmptyState
+          title="No batch runs"
+          description="Create a batch to process multiple images at once"
+          actionLabel="Create Batch"
+          onAction={() => navigate("/run/pipeline")}
+        />
       ) : (
         <>
-          <DsoTable
-            columns={[
-              {
-                header: "Name",
-                render: (b: BatchRunResponse) => b.name || <span className="text-muted">Untitled</span>,
-              },
-              {
-                header: "Status",
-                render: (b: BatchRunResponse) => (
-                  <DsoBadge variant={statusVariant[b.status] ?? "default"}>
-                    {b.status}
-                  </DsoBadge>
-                ),
-              },
-              {
-                header: "Progress",
-                render: (b: BatchRunResponse) => (
-                  <div className="flex items-center gap-2">
-                    <DsoProgressBar
-                      value={b.completed_count}
-                      max={b.total_count || 1}
-                      showPercent={false}
-                    />
-                    <span className="text-xs text-muted tabular-nums">
-                      {b.completed_count}/{b.total_count}
-                    </span>
-                    {b.failed_count > 0 && (
-                      <span className="text-xs text-amber">({b.failed_count} failed)</span>
-                    )}
-                  </div>
-                ),
-              },
-              {
-                header: "Created",
-                render: (b: BatchRunResponse) => (
-                  <span className="text-xs text-muted">{new Date(b.created_at).toLocaleString()}</span>
-                ),
-              },
-              {
-                header: "",
-                render: (b: BatchRunResponse) => (
-                  <Link
-                    to={`/batches/${b.id}`}
-                    className="text-xs font-medium text-teal hover:text-bright transition-colors"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {batches.map((b) => (
+              <Card key={b.id} hover onClick={() => navigate(`/batches/${b.id}`)}>
+                <h3 className="font-display text-base font-semibold text-ink mb-1">
+                  {b.name || "Untitled"}
+                </h3>
+                <Badge status={statusVariant[b.status] ?? "default"} size="sm">
+                  {b.status}
+                </Badge>
+                <div className="mt-3">
+                  <ProgressBar value={(b.completed_count / (b.total_count || 1)) * 100} />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-sand">
+                  <span>
+                    {b.completed_count}/{b.total_count} completed
+                  </span>
+                  {b.failed_count > 0 && (
+                    <span className="text-vermillion">({b.failed_count} failed)</span>
+                  )}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-sand">
+                    {new Date(b.created_at).toLocaleDateString()}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/batches/${b.id}`);
+                    }}
                   >
-                    View
-                  </Link>
-                ),
-              },
-            ]}
-            data={batches}
-            keyFn={(b) => b.id}
-          />
+                    View Details
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
 
-          <DsoPagination
-            page={Math.floor(offset / LIMIT) + 1}
-            totalPages={Math.ceil(total / LIMIT)}
-            totalItems={total}
-            pageSize={LIMIT}
-            onPageChange={(p) => setOffset((p - 1) * LIMIT)}
-            className="mt-4"
-          />
+          <div className="mt-4">
+            <Pagination
+              offset={offset}
+              limit={LIMIT}
+              total={total}
+              onPrev={() => setOffset(Math.max(0, offset - LIMIT))}
+              onNext={() => setOffset(offset + LIMIT)}
+            />
+          </div>
         </>
       )}
     </div>

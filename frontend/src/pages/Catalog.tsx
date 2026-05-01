@@ -4,9 +4,22 @@ import { useNavigate } from "react-router-dom";
 import { getCatalogExportUrl, listCatalog, updateCatalogEntry } from "../api/catalog";
 import type { CatalogEntryResponse } from "../api/types";
 import ConfidenceMeter from "../components/ConfidenceMeter";
-import { DsoBadge, DsoButton, DsoInput, DsoPagination, DsoSelect } from "../components/dso";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Pagination,
+  Select,
+  TableSkeleton,
+} from "../components/ui";
 
-const STATUSES = ["", "auto_confirmed", "needs_review", "rejected"];
+const STATUS_PILLS = [
+  { value: "", label: "All" },
+  { value: "auto_confirmed", label: "Confirmed" },
+  { value: "needs_review", label: "Needs Review" },
+  { value: "rejected", label: "Rejected" },
+];
 const LIMIT = 20;
 
 const catalogStatusVariant: Record<string, "completed" | "review" | "failed" | "default"> = {
@@ -23,6 +36,7 @@ export default function Catalog() {
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ title_en: "", title_ja: "", code: "", status: "" });
   const [saving, setSaving] = useState(false);
@@ -33,15 +47,18 @@ export default function Catalog() {
   }, [search]);
 
   useEffect(() => {
+    setLoading(true);
     listCatalog({
       status: statusFilter || undefined,
       search: searchDebounced || undefined,
       limit: LIMIT,
       offset,
-    }).then((data) => {
-      setEntries(data.items);
-      setTotal(data.total);
-    });
+    })
+      .then((data) => {
+        setEntries(data.items);
+        setTotal(data.total);
+      })
+      .finally(() => setLoading(false));
   }, [statusFilter, searchDebounced, offset]);
 
   async function handleSave() {
@@ -77,17 +94,14 @@ export default function Catalog() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-bright">Catalog</h1>
-        <DsoButton
-          variant="secondary"
-          onClick={() => window.open(getCatalogExportUrl(), "_blank")}
-        >
+        <h1 className="font-display text-xl font-bold text-ink">Catalog</h1>
+        <Button variant="secondary" onClick={() => window.open(getCatalogExportUrl(), "_blank")}>
           Export CSV
-        </DsoButton>
+        </Button>
       </div>
 
       <div className="mb-4 flex gap-3">
-        <DsoInput
+        <Input
           placeholder="Search title or code..."
           value={search}
           onChange={(e) => {
@@ -96,37 +110,48 @@ export default function Catalog() {
           }}
           className="flex-1"
         />
-        <DsoSelect
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setOffset(0);
-          }}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s ? s.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "All Statuses"}
-            </option>
+        <div className="flex gap-2">
+          {STATUS_PILLS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => {
+                setStatusFilter(p.value);
+                setOffset(0);
+              }}
+              className={`
+                px-3 py-1.5 rounded-full text-sm font-body font-medium transition-colors
+                ${
+                  statusFilter === p.value
+                    ? "bg-indigo-pale text-indigo"
+                    : "bg-snow text-charcoal border border-linen hover:bg-cream"
+                }
+              `}
+            >
+              {p.label}
+            </button>
           ))}
-        </DsoSelect>
+        </div>
       </div>
 
-      {entries.length === 0 ? (
-        <p className="text-sm text-muted">
-          No catalog entries detected. Upload images and run the pipeline to populate.
-        </p>
+      {loading ? (
+        <TableSkeleton />
+      ) : entries.length === 0 ? (
+        <EmptyState
+          title="No catalog entries"
+          description="Run OCR on manga images to populate the catalog"
+        />
       ) : (
         <>
-          <div className="neo-inset overflow-hidden rounded-lg">
+          <div className="overflow-hidden rounded-lg border border-linen bg-snow">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-highlight/20">
-                  <th className="px-4 py-3 tech-label text-muted">Title EN</th>
-                  <th className="px-4 py-3 tech-label text-muted">Title JA</th>
-                  <th className="px-4 py-3 tech-label text-muted">Code</th>
-                  <th className="px-4 py-3 tech-label text-muted">Confidence</th>
-                  <th className="px-4 py-3 tech-label text-muted">Status</th>
-                  <th className="px-4 py-3 tech-label text-muted">Created</th>
+                <tr className="border-b border-linen">
+                  <th className="px-4 py-3 label-text">Title EN</th>
+                  <th className="px-4 py-3 label-text">Title JA</th>
+                  <th className="px-4 py-3 label-text">Code</th>
+                  <th className="px-4 py-3 label-text">Confidence</th>
+                  <th className="px-4 py-3 label-text">Status</th>
+                  <th className="px-4 py-3 label-text">Created</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,58 +159,69 @@ export default function Catalog() {
                   <Fragment key={entry.id}>
                     <tr
                       onClick={() => handleExpand(entry)}
-                      className="cursor-pointer border-b border-highlight/10 transition-colors hover:bg-teal/5"
+                      className="cursor-pointer border-b border-linen/50 transition-colors hover:bg-indigo-pale/30"
                     >
-                      <td className="px-4 py-3 text-bright/90">{entry.title_en || "—"}</td>
-                      <td className="px-4 py-3 text-bright/90">{entry.title_ja || "—"}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-bright/80">{entry.code || "—"}</td>
-                      <td className="px-4 py-3"><ConfidenceMeter value={entry.confidence} /></td>
-                      <td className="px-4 py-3">
-                        <DsoBadge variant={catalogStatusVariant[entry.status] ?? "default"}>
-                          {entry.status.replace("_", " ")}
-                        </DsoBadge>
+                      <td className="px-4 py-3 text-charcoal">{entry.title_en || "\u2014"}</td>
+                      <td className="px-4 py-3 text-charcoal font-japanese">
+                        {entry.title_ja || "\u2014"}
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted">
+                      <td className="px-4 py-3 font-mono text-xs text-charcoal/80">
+                        {entry.code || "\u2014"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ConfidenceMeter value={entry.confidence} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge status={catalogStatusVariant[entry.status] ?? "default"}>
+                          {entry.status.replace("_", " ")}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-sand">
                         {new Date(entry.created_at).toLocaleDateString()}
                       </td>
                     </tr>
                     {expandedId === entry.id && (
                       <tr>
-                        <td colSpan={6} className="neo-deep-inset px-4 py-3">
+                        <td colSpan={6} className="bg-cream px-4 py-3">
                           <div className="flex flex-wrap gap-3">
-                            <DsoInput
+                            <Input
                               placeholder="Title EN"
                               value={editForm.title_en}
-                              onChange={(e) => setEditForm({ ...editForm, title_en: e.target.value })}
+                              onChange={(e) =>
+                                setEditForm({ ...editForm, title_en: e.target.value })
+                              }
                             />
-                            <DsoInput
+                            <Input
                               placeholder="Title JA"
                               value={editForm.title_ja}
-                              onChange={(e) => setEditForm({ ...editForm, title_ja: e.target.value })}
+                              onChange={(e) =>
+                                setEditForm({ ...editForm, title_ja: e.target.value })
+                              }
                             />
-                            <DsoInput
+                            <Input
                               placeholder="Code / ISBN"
                               value={editForm.code}
                               onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
                             />
-                            <DsoSelect
+                            <Select
                               value={editForm.status}
                               onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                            >
-                              <option value="auto_confirmed">Auto Confirmed</option>
-                              <option value="needs_review">Needs Review</option>
-                              <option value="rejected">Rejected</option>
-                            </DsoSelect>
-                            <DsoButton onClick={handleSave} disabled={saving}>
+                              options={[
+                                { value: "auto_confirmed", label: "Auto Confirmed" },
+                                { value: "needs_review", label: "Needs Review" },
+                                { value: "rejected", label: "Rejected" },
+                              ]}
+                            />
+                            <Button onClick={handleSave} disabled={saving}>
                               {saving ? "Saving..." : "Save"}
-                            </DsoButton>
+                            </Button>
                           </div>
-                          <p className="mt-2 text-xs text-muted">
+                          <p className="mt-2 text-xs text-sand">
                             Source:{" "}
                             <button
                               type="button"
                               onClick={() => navigate(`/runs/${entry.source_run_id}`)}
-                              className="cursor-pointer text-teal hover:text-bright transition-colors"
+                              className="cursor-pointer text-indigo hover:text-indigo/70 transition-colors"
                             >
                               Run #{entry.source_run_id.slice(0, 8)}
                             </button>
@@ -199,14 +235,15 @@ export default function Catalog() {
             </table>
           </div>
 
-          <DsoPagination
-            page={Math.floor(offset / LIMIT) + 1}
-            totalPages={Math.ceil(total / LIMIT)}
-            totalItems={total}
-            pageSize={LIMIT}
-            onPageChange={(p) => setOffset((p - 1) * LIMIT)}
-            className="mt-4"
-          />
+          <div className="mt-4">
+            <Pagination
+              offset={offset}
+              limit={LIMIT}
+              total={total}
+              onPrev={() => setOffset(Math.max(0, offset - LIMIT))}
+              onNext={() => setOffset(offset + LIMIT)}
+            />
+          </div>
         </>
       )}
     </div>

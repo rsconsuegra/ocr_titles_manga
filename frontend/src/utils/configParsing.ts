@@ -1,6 +1,4 @@
-export function parseStepEntries(
-  entries: Record<string, Record<string, unknown>>,
-): {
+export function parseStepEntries(entries: Record<string, Record<string, unknown>>): {
   config: Record<string, Record<string, unknown>>;
   enabled: Record<string, boolean>;
 } {

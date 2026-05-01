@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 
 import type { TextBlockData } from "../api/types";
 import ConfidenceMeter from "./ConfidenceMeter";
-import { DsoButton, DsoCard, DsoErrorBanner } from "./dso";
+import { Button, Card, ErrorBanner } from "./ui";
 
 interface OcrResultCardProps {
   modelName: string;
@@ -15,13 +15,7 @@ interface OcrResultCardProps {
   variant?: "full" | "compact";
 }
 
-function BboxOverlay({
-  blocks,
-  imageDataUrl,
-}: {
-  blocks: TextBlockData[];
-  imageDataUrl: string;
-}) {
+function BboxOverlay({ blocks, imageDataUrl }: { blocks: TextBlockData[]; imageDataUrl: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -52,7 +46,10 @@ function BboxOverlay({
         ctx.lineTo(pts[i]![0]!, pts[i]![1]!);
       }
       ctx.closePath();
-      ctx.strokeStyle = "#06b6d4";
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.strokeStyle = "#2E4A7A";
       ctx.lineWidth = 2;
       ctx.stroke();
     });
@@ -62,11 +59,11 @@ function BboxOverlay({
 
   return (
     <div className="relative">
-      <canvas ref={canvasRef} className="w-full rounded border border-border">
+      <canvas ref={canvasRef} className="w-full rounded border border-linen">
         <img src={imageDataUrl} alt="" className="hidden" onLoad={handleImageLoad} />
       </canvas>
       {!loaded && (
-        <div className="flex h-40 items-center justify-center text-sm text-muted">
+        <div className="flex h-40 items-center justify-center text-sm text-sand">
           Loading overlay...
         </div>
       )}
@@ -90,31 +87,28 @@ export default function OcrResultCard({
 
   if (variant === "full") {
     return (
-      <DsoCard>
-        <h3 className="mb-2 text-sm font-semibold text-bright">OCR Output</h3>
+      <Card>
+        <h3 className="mb-2 text-sm font-semibold text-ink">OCR Output</h3>
         <div className="mb-2">
-          <span className="text-xs text-muted">Model:</span>{" "}
-          <span className="text-sm font-medium text-bright">{modelName}</span>
+          <span className="text-xs text-sand">Model:</span>{" "}
+          <span className="text-sm font-medium text-charcoal">{modelName}</span>
         </div>
         <div className="mb-2">
-          <span className="text-xs text-muted">Time:</span>{" "}
-          <span className="text-sm text-bright">{processingTimeMs}ms</span>
+          <span className="text-xs text-sand">Time:</span>{" "}
+          <span className="text-sm text-charcoal">{processingTimeMs}ms</span>
         </div>
         <div className="mb-3">
-          <span className="text-xs text-muted">Confidence:</span>
+          <span className="text-xs text-sand">Confidence:</span>
           <ConfidenceMeter value={confidence} />
         </div>
 
         {hasBlocks && (
           <div className="mb-3">
             <div className="mb-2 flex items-center gap-2">
-              <DsoButton
-                variant="secondary"
-                onClick={() => setShowOverlay(!showOverlay)}
-              >
+              <Button variant="secondary" onClick={() => setShowOverlay(!showOverlay)}>
                 {showOverlay ? "Hide Overlay" : "Show Bounding Boxes"}
-              </DsoButton>
-              <span className="text-xs text-muted">
+              </Button>
+              <span className="text-xs text-sand">
                 {blocks!.length} text block{blocks!.length !== 1 ? "s" : ""} detected
               </span>
             </div>
@@ -123,10 +117,10 @@ export default function OcrResultCard({
               <BboxOverlay blocks={blocks!} imageDataUrl={imageDataUrl} />
             )}
 
-            <div className="mt-2 max-h-60 overflow-auto rounded border border-border">
+            <div className="mt-2 max-h-60 overflow-auto rounded border border-linen">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface">
-                  <tr className="text-left text-muted">
+                <thead className="sticky top-0 bg-snow">
+                  <tr className="text-left text-sand">
                     <th className="px-2 py-1">#</th>
                     <th className="px-2 py-1">Text</th>
                     <th className="px-2 py-1">Conf</th>
@@ -137,20 +131,18 @@ export default function OcrResultCard({
                   {blocks!.map((b, i) => (
                     <tr
                       key={i}
-                      className={`border-t border-border ${
-                        hoveredBlock === i ? "bg-cyan-500/10" : ""
+                      className={`border-t border-linen ${
+                        hoveredBlock === i ? "bg-indigo-pale/50" : ""
                       }`}
                       onMouseEnter={() => setHoveredBlock(i)}
                       onMouseLeave={() => setHoveredBlock(null)}
                     >
-                      <td className="px-2 py-1 text-muted">{i + 1}</td>
-                      <td className="max-w-[200px] truncate px-2 py-1 text-bright">
-                        {b.text}
-                      </td>
-                      <td className="px-2 py-1 text-bright">
+                      <td className="px-2 py-1 text-sand">{i + 1}</td>
+                      <td className="max-w-[200px] truncate px-2 py-1 text-charcoal">{b.text}</td>
+                      <td className="px-2 py-1 text-charcoal">
                         {(b.confidence * 100).toFixed(1)}%
                       </td>
-                      <td className="px-2 py-1 font-mono text-muted">
+                      <td className="px-2 py-1 font-mono text-sand">
                         [{b.bbox[0]!.map((v) => Math.round(v)).join(", ")}]
                       </td>
                     </tr>
@@ -161,29 +153,37 @@ export default function OcrResultCard({
           </div>
         )}
 
-        <div className="rounded bg-lcd p-3">
-          <pre className="whitespace-pre-wrap break-words text-sm text-bright/80">
+        <div className="rounded bg-cream p-3">
+          <pre className="whitespace-pre-wrap break-words text-sm text-charcoal/80">
             {rawText || "(empty)"}
           </pre>
         </div>
-        {error && <DsoErrorBanner className="mt-2">{error}</DsoErrorBanner>}
-      </DsoCard>
+        {error && (
+          <div className="mt-2">
+            <ErrorBanner message={error} />
+          </div>
+        )}
+      </Card>
     );
   }
 
   return (
-    <DsoCard>
+    <Card>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-bright">{modelName}</h3>
+        <h3 className="text-sm font-semibold text-ink">{modelName}</h3>
         <ConfidenceMeter value={confidence} />
       </div>
-      <div className="text-xs text-muted mb-2">{processingTimeMs}ms</div>
-      <div className="rounded bg-lcd p-3">
-        <pre className="whitespace-pre-wrap break-words text-sm text-bright/80">
+      <div className="text-xs text-sand mb-2">{processingTimeMs}ms</div>
+      <div className="rounded bg-cream p-3">
+        <pre className="whitespace-pre-wrap break-words text-sm text-charcoal/80">
           {rawText || "(empty)"}
         </pre>
       </div>
-      {error && <DsoErrorBanner className="mt-2">{error}</DsoErrorBanner>}
-    </DsoCard>
+      {error && (
+        <div className="mt-2">
+          <ErrorBanner message={error} />
+        </div>
+      )}
+    </Card>
   );
 }

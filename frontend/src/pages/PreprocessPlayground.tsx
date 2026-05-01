@@ -1,27 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
-import { exportPipeline, getPreprocessSteps, previewPipeline,previewStep } from "../api/preprocess";
+import {
+  exportPipeline,
+  getPreprocessSteps,
+  previewPipeline,
+  previewStep,
+} from "../api/preprocess";
 import type { PipelineStepResult, StepDescriptor } from "../api/types";
-import { DsoButton, DsoSelect } from "../components/dso";
 import ImageCompare from "../components/ImageCompare";
 import PipelineFilmstrip from "../components/PipelineFilmstrip";
 import PreprocessStepCard from "../components/PreprocessStepCard";
 import SingleImageUpload from "../components/SingleImageUpload";
-
-type Tab = "step" | "pipeline";
+import { Button, FormSkeleton } from "../components/ui";
 
 export default function PreprocessPlayground() {
   const [steps, setSteps] = useState<StepDescriptor[]>([]);
   const [sourceImage, setSourceImage] = useState<string>("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
-  const [tab, setTab] = useState<Tab>("step");
 
   const [selectedStep, setSelectedStep] = useState<string>("grayscale");
   const [stepParams, setStepParams] = useState<Record<string, unknown>>({});
-  const [stepResult, setStepResult] = useState<{ image: string; metadata: Record<string, unknown>; time_ms: number } | null>(null);
+  const [stepResult, setStepResult] = useState<{
+    image: string;
+    metadata: Record<string, unknown>;
+    time_ms: number;
+  } | null>(null);
   const [stepLoading, setStepLoading] = useState(false);
 
-  const [pipelineConfigs, setPipelineConfigs] = useState<Record<string, Record<string, unknown>>>({});
+  const [pipelineConfigs, setPipelineConfigs] = useState<Record<string, Record<string, unknown>>>(
+    {},
+  );
   const [pipelineEnabled, setPipelineEnabled] = useState<Record<string, boolean>>({});
   const [pipelineResults, setPipelineResults] = useState<PipelineStepResult[] | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
@@ -69,7 +77,10 @@ export default function PreprocessPlayground() {
   const handleExport = useCallback(async () => {
     const merged: Record<string, Record<string, unknown>> = {};
     for (const step of steps) {
-      merged[step.name] = { ...pipelineConfigs[step.name], enabled: pipelineEnabled[step.name] ?? true };
+      merged[step.name] = {
+        ...pipelineConfigs[step.name],
+        enabled: pipelineEnabled[step.name] ?? true,
+      };
     }
     const res = await exportPipeline(merged);
     const blob = new Blob([res.yaml], { type: "text/yaml" });
@@ -83,13 +94,15 @@ export default function PreprocessPlayground() {
 
   const currentStep = steps.find((s) => s.name === selectedStep);
 
+  if (steps.length === 0) return <FormSkeleton />;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-bright">Preprocessing Playground</h1>
-        <DsoButton variant="secondary" onClick={handleExport}>
+        <h1 className="font-display text-xl font-bold text-ink">Preprocessing Playground</h1>
+        <Button variant="ghost" onClick={handleExport}>
           Export YAML
-        </DsoButton>
+        </Button>
       </div>
 
       <SingleImageUpload
@@ -104,111 +117,93 @@ export default function PreprocessPlayground() {
         }}
       />
 
-      <div className="flex gap-1 border-b border-highlight/20">
-        {(["step", "pipeline"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={[
-              "px-4 py-2 text-sm font-medium capitalize transition-colors",
-              tab === t
-                ? "border-b-2 border-teal text-teal"
-                : "text-muted hover:text-bright",
-            ].join(" ")}
-          >
-            {t === "step" ? "Single Step" : "Full Pipeline"}
-          </button>
-        ))}
-      </div>
-
-      {tab === "step" && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <DsoSelect
-              label="Step"
-              value={selectedStep}
-              onChange={(e) => {
-                setSelectedStep(e.target.value);
-                setStepParams({});
-                setStepResult(null);
-              }}
-            >
-              {steps.map((s) => (
-                <option key={s.name} value={s.name}>{s.label}</option>
-              ))}
-            </DsoSelect>
-            {currentStep && currentStep.params.length > 0 && (
-              <PreprocessStepCard
-                step={currentStep}
-                params={stepParams}
-                enabled={true}
-                showEnabled={false}
-                onParamsChange={setStepParams}
-                onEnabledChange={() => {}}
-              />
-            )}
-            <DsoButton
-              onClick={handlePreviewStep}
-              disabled={!sourceFile || stepLoading}
-            >
-              {stepLoading ? "Processing..." : "Preview Step"}
-            </DsoButton>
-          </div>
-
-          <div>
-            {stepResult && sourceImage && (
-              <div className="space-y-3">
-                <ImageCompare
-                  beforeSrc={sourceImage}
-                  afterSrc={stepResult.image}
-                  beforeLabel="Original"
-                  afterLabel={currentStep?.label || "Result"}
-                />
-                <div className="text-xs text-muted">
-                  {stepResult.time_ms}ms &middot;{" "}
-                  {Object.entries(stepResult.metadata)
-                    .map(([k, v]) => `${k}: ${String(v)}`)
-                    .join(" · ")}
-                </div>
-              </div>
-            )}
-          </div>
+      {steps.length > 0 && (
+        <div className="flex items-center gap-1 overflow-x-auto pb-2">
+          {steps.map((s, i) => (
+            <Fragment key={s.name}>
+              {i > 0 && <span className="text-sand mx-1">&rarr;</span>}
+              <button
+                onClick={() => {
+                  setSelectedStep(s.name);
+                  setStepParams({});
+                  setStepResult(null);
+                }}
+                className={`
+                  shrink-0 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap
+                  ${
+                    selectedStep === s.name
+                      ? "bg-indigo text-snow"
+                      : "bg-snow text-charcoal border border-linen hover:bg-cream"
+                  }
+                `}
+              >
+                {s.label}
+              </button>
+            </Fragment>
+          ))}
         </div>
       )}
 
-      {tab === "pipeline" && (
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {steps.map((s) => (
-              <PreprocessStepCard
-                key={s.name}
-                step={s}
-                params={pipelineConfigs[s.name] || {}}
-                enabled={pipelineEnabled[s.name] ?? true}
-                onParamsChange={(p) =>
-                  setPipelineConfigs((prev) => ({ ...prev, [s.name]: p }))
-                }
-                onEnabledChange={(e) =>
-                  setPipelineEnabled((prev) => ({ ...prev, [s.name]: e }))
-                }
+          {currentStep && currentStep.params.length > 0 && (
+            <PreprocessStepCard
+              step={currentStep}
+              params={stepParams}
+              enabled={true}
+              showEnabled={false}
+              onParamsChange={setStepParams}
+              onEnabledChange={() => {}}
+            />
+          )}
+          <Button onClick={handlePreviewStep} disabled={!sourceFile || stepLoading}>
+            {stepLoading ? "Processing..." : "Preview Step"}
+          </Button>
+        </div>
+        <div>
+          {stepResult && sourceImage && (
+            <div className="space-y-3">
+              <ImageCompare
+                beforeSrc={sourceImage}
+                afterSrc={stepResult.image}
+                beforeLabel="Original"
+                afterLabel={currentStep?.label || "Result"}
               />
-            ))}
-          </div>
-          <DsoButton
-            onClick={handlePreviewPipeline}
-            disabled={!sourceFile || pipelineLoading}
-          >
-            {pipelineLoading ? "Processing..." : "Preview Pipeline"}
-          </DsoButton>
-
-          {pipelineResults && (
-            <div>
-              <h3 className="mb-2 text-sm font-medium text-bright">Pipeline Result</h3>
-              <PipelineFilmstrip steps={pipelineResults} />
+              <div className="text-xs text-sand">
+                {stepResult.time_ms}ms &middot;{" "}
+                {Object.entries(stepResult.metadata)
+                  .map(([k, v]) => `${k}: ${String(v)}`)
+                  .join(" \u00b7 ")}
+              </div>
             </div>
           )}
         </div>
-      )}
+      </div>
+
+      <div className="mt-8 space-y-4">
+        <h2 className="font-display text-lg font-semibold text-ink">Full Pipeline</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {steps.map((s) => (
+            <PreprocessStepCard
+              key={s.name}
+              step={s}
+              params={pipelineConfigs[s.name] || {}}
+              enabled={pipelineEnabled[s.name] ?? true}
+              onParamsChange={(p) => setPipelineConfigs((prev) => ({ ...prev, [s.name]: p }))}
+              onEnabledChange={(e) => setPipelineEnabled((prev) => ({ ...prev, [s.name]: e }))}
+            />
+          ))}
+        </div>
+        <Button onClick={handlePreviewPipeline} disabled={!sourceFile || pipelineLoading}>
+          {pipelineLoading ? "Processing..." : "Preview Pipeline"}
+        </Button>
+        {pipelineResults && (
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-ink">Pipeline Result</h3>
+            <PipelineFilmstrip steps={pipelineResults} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

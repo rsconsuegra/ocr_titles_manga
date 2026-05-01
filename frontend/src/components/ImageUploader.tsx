@@ -1,6 +1,6 @@
 import { type ChangeEvent, type DragEvent, useCallback, useEffect, useState } from "react";
 
-import { DsoErrorBanner } from "./dso";
+import { ErrorBanner } from "./ui";
 
 const ALLOWED = new Set([".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif", ".bmp"]);
 const MAX_FILES = 10;
@@ -89,8 +89,8 @@ export default function ImageUploader({ onFilesSelected, maxFiles = MAX_FILES }:
         className={[
           "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-all duration-150",
           dragActive
-            ? "border-teal/60 bg-teal/5 shadow-[inset_0_0_20px_rgba(56,178,172,0.08)]"
-            : "border-highlight/30 bg-inset neo-inset",
+            ? "border-indigo bg-indigo-pale/20"
+            : "border-linen bg-cream hover:border-indigo/50",
         ].join(" ")}
         onClick={() => document.getElementById("file-picker")?.click()}
         role="button"
@@ -102,38 +102,53 @@ export default function ImageUploader({ onFilesSelected, maxFiles = MAX_FILES }:
           }
         }}
       >
-        <svg className="mb-2 h-10 w-10 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        <svg
+          className="mb-2 h-10 w-10 text-sand"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
         </svg>
-        <p className="text-sm text-muted">Drop manga images here or click to browse</p>
-        <input id="file-picker" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.tiff,.tif,.bmp" className="hidden" onChange={onChange} />
+        <p className="text-sm text-sand">Drop manga images here or click to browse</p>
+        <input
+          id="file-picker"
+          type="file"
+          multiple
+          accept=".png,.jpg,.jpeg,.webp,.tiff,.tif,.bmp"
+          className="hidden"
+          onChange={onChange}
+        />
       </div>
 
       {errors.length > 0 && (
-        <DsoErrorBanner className="mt-2">
-          {errors.map((e, i) => (
-            <div key={i}>{e}</div>
-          ))}
-        </DsoErrorBanner>
+        <div className="mt-2">
+          <ErrorBanner message={`${errors.length} file error(s)`} />
+        </div>
       )}
 
       {files.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
           {files.map((f, i) => (
-            <div key={i} className="group relative neo-inset p-2">
+            <div key={i} className="group relative rounded-lg border border-linen bg-snow p-2">
               <img
                 src={blobUrls[i]}
                 alt={f.name}
                 className="mb-1 h-24 w-full rounded object-cover"
               />
-              <p className="truncate text-xs text-bright">{f.name}</p>
-              <p className="text-xs text-muted">{(f.size / 1024).toFixed(0)} KB</p>
+              <p className="truncate text-xs text-charcoal">{f.name}</p>
+              <p className="text-xs text-sand">{(f.size / 1024).toFixed(0)} KB</p>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   removeFile(i);
                 }}
-                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber text-xs text-chassis opacity-0 transition-opacity group-hover:opacity-100"
+                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-vermillion text-xs text-snow opacity-0 transition-opacity group-hover:opacity-100"
               >
                 x
               </button>

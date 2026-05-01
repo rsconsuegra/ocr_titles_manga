@@ -14,7 +14,7 @@ interface OcrModelCardProps {
   onVisionModelChange?: (value: string) => void;
 }
 
-const CBX = "rounded border-highlight/40 bg-inset accent-teal";
+const CBX = "rounded border-linen bg-linen accent-indigo";
 
 export default function OcrModelCard({
   model,
@@ -28,8 +28,8 @@ export default function OcrModelCard({
   onVisionModelChange,
 }: OcrModelCardProps) {
   return (
-    <div className="neo-inset rounded-lg p-3">
-      <label className="flex items-center gap-2 text-sm font-medium text-bright">
+    <div className="rounded-lg border border-linen bg-cream p-3">
+      <label className="flex items-center gap-2 text-sm font-medium text-charcoal">
         <input
           type="checkbox"
           checked={enabled}
@@ -37,9 +37,7 @@ export default function OcrModelCard({
           className={CBX}
         />
         {model.label}
-        {!model.available && (
-          <span className="text-xs text-muted">(not available)</span>
-        )}
+        {!model.available && <span className="text-xs text-sand">(not available)</span>}
       </label>
       {enabled && model.params.length > 0 && (
         <div className="mt-2">

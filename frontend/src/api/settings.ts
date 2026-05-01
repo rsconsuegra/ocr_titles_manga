@@ -63,12 +63,9 @@ export async function validateCredential(
   service: string,
   api_key: string,
 ): Promise<CredentialValidateResponse> {
-  return apiFetch<CredentialValidateResponse>(
-    `/api/v1/settings/credentials/${service}/validate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key }),
-    },
-  );
+  return apiFetch<CredentialValidateResponse>(`/api/v1/settings/credentials/${service}/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key }),
+  });
 }

@@ -30,9 +30,7 @@ export async function getProfile(id: string): Promise<ProfileResponse> {
   return apiFetch(`/api/v1/profiles/${id}`);
 }
 
-export async function createProfile(
-  data: ProfileCreateRequest,
-): Promise<ProfileResponse> {
+export async function createProfile(data: ProfileCreateRequest): Promise<ProfileResponse> {
   return apiFetch("/api/v1/profiles", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -55,9 +53,7 @@ export async function deleteProfile(id: string): Promise<void> {
   await apiFetch(`/api/v1/profiles/${id}`, { method: "DELETE" });
 }
 
-export async function setDefaultProfile(
-  id: string,
-): Promise<ProfileResponse> {
+export async function setDefaultProfile(id: string): Promise<ProfileResponse> {
   return apiFetch(`/api/v1/profiles/${id}/set-default`, {
     method: "POST",
   });
@@ -72,8 +68,7 @@ export async function exportProfile(id: string): Promise<void> {
   const data = await res.json();
   const content = JSON.stringify(data, null, 2);
   const filename =
-    res.headers.get("Content-Disposition")?.match(/filename="(.+?)"/)?.[1] ||
-    "profile.json";
+    res.headers.get("Content-Disposition")?.match(/filename="(.+?)"/)?.[1] || "profile.json";
 
   const blob = new Blob([content], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -86,9 +81,7 @@ export async function exportProfile(id: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export async function validateProfileImport(
-  data: ProfileExportFile,
-): Promise<ProfileImportResult> {
+export async function validateProfileImport(data: ProfileExportFile): Promise<ProfileImportResult> {
   return apiFetch("/api/v1/profiles/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -96,9 +89,7 @@ export async function validateProfileImport(
   });
 }
 
-export async function importProfile(
-  data: ProfileExportFile,
-): Promise<ProfileImportResult> {
+export async function importProfile(data: ProfileExportFile): Promise<ProfileImportResult> {
   return apiFetch("/api/v1/profiles/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

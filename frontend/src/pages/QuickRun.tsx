@@ -5,8 +5,13 @@ import { getOCRModels } from "../api/ocr";
 import { getPreprocessSteps } from "../api/preprocess";
 import { listProfiles } from "../api/profiles";
 import { quickRun } from "../api/run";
-import type { ModelDescriptorResponse, OpenRouterModel, ProfileResponse, QuickRunResponse, StepDescriptor } from "../api/types";
-import { DsoButton, DsoCard, DsoErrorBanner, DsoSelect } from "../components/dso";
+import type {
+  ModelDescriptorResponse,
+  OpenRouterModel,
+  ProfileResponse,
+  QuickRunResponse,
+  StepDescriptor,
+} from "../api/types";
 import LlmConfigSection from "../components/LlmConfigSection";
 import LlmExtractionCard from "../components/LlmExtractionCard";
 import OcrModelCard from "../components/OcrModelCard";
@@ -14,11 +19,36 @@ import OcrResultCard from "../components/OcrResultCard";
 import PreprocessStepCard from "../components/PreprocessStepCard";
 import PromptSettingsPanel from "../components/PromptSettingsPanel";
 import SingleImageUpload from "../components/SingleImageUpload";
+import { Button, Card, ErrorBanner, FormSkeleton, Select } from "../components/ui";
 import { OLLAMA_VISION_MODEL } from "../constants";
 import { useLlmPromptState } from "../hooks/useLlmPromptState";
 import { useOllamaModels } from "../hooks/useOllamaModels";
 import { useYamlConfig } from "../hooks/useYamlConfig";
 import { parseStepEntries } from "../utils/configParsing";
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card padding="sm" className="mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between py-2 text-left"
+      >
+        <span className="font-display font-semibold text-ink">{title}</span>
+        <span className="text-sand text-lg">{open ? "\u2212" : "+"}</span>
+      </button>
+      {open && <div className="pt-3 border-t border-linen mt-2">{children}</div>}
+    </Card>
+  );
+}
 
 export default function QuickRun() {
   const [preprocessSteps, setPreprocessSteps] = useState<StepDescriptor[]>([]);
@@ -29,7 +59,9 @@ export default function QuickRun() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [useCustomPreprocess, setUseCustomPreprocess] = useState(false);
   const [useCustomOcr, setUseCustomOcr] = useState(false);
-  const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>({});
+  const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>(
+    {},
+  );
   const [preprocessEnabled, setPreprocessEnabled] = useState<Record<string, boolean>>({});
   const [ocrConfig, setOcrConfig] = useState<Record<string, Record<string, unknown>>>({});
   const [ocrEnabled, setOcrEnabled] = useState<Record<string, boolean>>({});
@@ -47,10 +79,18 @@ export default function QuickRun() {
   const parseYaml = useYamlConfig();
 
   useEffect(() => {
-    getPreprocessSteps().then(setPreprocessSteps).catch(() => {});
-    getOCRModels().then(setOcrModels).catch(() => {});
-    listProfiles().then((res) => setProfiles(res.items)).catch(() => {});
-    getOpenRouterModels().then(setOpenRouterModels).catch(() => {});
+    getPreprocessSteps()
+      .then(setPreprocessSteps)
+      .catch(() => {});
+    getOCRModels()
+      .then(setOcrModels)
+      .catch(() => {});
+    listProfiles()
+      .then((res) => setProfiles(res.items))
+      .catch(() => {});
+    getOpenRouterModels()
+      .then(setOpenRouterModels)
+      .catch(() => {});
   }, []);
 
   function handlePreprocessYamlUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -138,9 +178,7 @@ export default function QuickRun() {
         }
       }
 
-      const effectiveLlmModel = llmProvider === "openrouter"
-        ? promptState.llmModel
-        : llmModel;
+      const effectiveLlmModel = llmProvider === "openrouter" ? promptState.llmModel : llmModel;
       const resp = await quickRun(imageFile, {
         preprocessSteps: finalPpSteps,
         ocrModels: finalOcrModels,
@@ -158,88 +196,126 @@ export default function QuickRun() {
     }
   }
 
-  const cbx = "rounded border-highlight/40 bg-inset accent-teal";
+  const cbx = "rounded border-linen bg-linen accent-indigo";
+
+  if (preprocessSteps.length === 0) return <FormSkeleton />;
 
   return (
-    <div>
-      <h1 className="mb-6 font-display text-xl font-bold text-bright">Quick Run</h1>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <SingleImageUpload
-            imageDataUrl={imageDataUrl}
-            fileName={imageFile?.name ?? ""}
-            onImageChange={(dataUrl, file) => {
-              setImageDataUrl(dataUrl);
-              setImageFile(file);
-              setResult(null);
-            }}
-          />
+    <div className="space-y-6">
+      <div className="grid grid-cols-5 gap-6">
+        <div className="col-span-2 space-y-4">
+          <Card>
+            <SingleImageUpload
+              imageDataUrl={imageDataUrl}
+              fileName={imageFile?.name ?? ""}
+              onImageChange={(dataUrl, file) => {
+                setImageDataUrl(dataUrl);
+                setImageFile(file);
+                setResult(null);
+              }}
+            />
+          </Card>
 
           {profiles.length > 0 && (
-            <DsoSelect
+            <Select
               label="Load Profile"
               value={selectedProfileId}
               onChange={(e) => handleLoadProfile(e.target.value)}
-            >
-              <option value="">No profile</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.is_default ? " (default)" : ""}
-                </option>
-              ))}
-            </DsoSelect>
+              options={[
+                { value: "", label: "No profile" },
+                ...profiles.map((p) => ({
+                  value: p.id,
+                  label: `${p.name}${p.is_default ? " (default)" : ""}`,
+                })),
+              ]}
+            />
           )}
+        </div>
 
-          <DsoCard>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-medium text-bright">
-                <input type="checkbox" checked={useCustomPreprocess} onChange={(e) => setUseCustomPreprocess(e.target.checked)} className={cbx} />
+        <div className="col-span-3 space-y-0">
+          <CollapsibleSection title="Preprocessing">
+            <div className="flex items-center justify-between mb-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-charcoal">
+                <input
+                  type="checkbox"
+                  checked={useCustomPreprocess}
+                  onChange={(e) => setUseCustomPreprocess(e.target.checked)}
+                  className={cbx}
+                />
                 Custom Preprocessing
               </label>
               {useCustomPreprocess && (
                 <>
-                  <input ref={ppYamlRef} type="file" accept=".yaml,.yml" onChange={handlePreprocessYamlUpload} className="hidden" />
-                  <DsoButton variant="ghost" className="text-xs px-2 py-1" onClick={() => ppYamlRef.current?.click()}>
+                  <input
+                    ref={ppYamlRef}
+                    type="file"
+                    accept=".yaml,.yml"
+                    onChange={handlePreprocessYamlUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="ghost"
+                    className="text-xs px-2 py-1"
+                    onClick={() => ppYamlRef.current?.click()}
+                  >
                     Upload YAML
-                  </DsoButton>
+                  </Button>
                 </>
               )}
             </div>
             {useCustomPreprocess && (
-              <div className="mt-3 space-y-3">
+              <div className="space-y-3">
                 {preprocessSteps.map((step) => (
                   <PreprocessStepCard
                     key={step.name}
                     step={step}
                     params={preprocessConfig[step.name] || {}}
                     enabled={preprocessEnabled[step.name] ?? false}
-                    onParamsChange={(c) => setPreprocessConfig((prev) => ({ ...prev, [step.name]: c }))}
-                    onEnabledChange={(v) => setPreprocessEnabled((prev) => ({ ...prev, [step.name]: v }))}
+                    onParamsChange={(c) =>
+                      setPreprocessConfig((prev) => ({ ...prev, [step.name]: c }))
+                    }
+                    onEnabledChange={(v) =>
+                      setPreprocessEnabled((prev) => ({ ...prev, [step.name]: v }))
+                    }
                     showEnabled={true}
                   />
                 ))}
               </div>
             )}
-          </DsoCard>
+          </CollapsibleSection>
 
-          <DsoCard>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-medium text-bright">
-                <input type="checkbox" checked={useCustomOcr} onChange={(e) => setUseCustomOcr(e.target.checked)} className={cbx} />
+          <CollapsibleSection title="OCR Models">
+            <div className="flex items-center justify-between mb-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-charcoal">
+                <input
+                  type="checkbox"
+                  checked={useCustomOcr}
+                  onChange={(e) => setUseCustomOcr(e.target.checked)}
+                  className={cbx}
+                />
                 Custom OCR Models
               </label>
               {useCustomOcr && (
                 <>
-                  <input ref={ocrYamlRef} type="file" accept=".yaml,.yml" onChange={handleOcrYamlUpload} className="hidden" />
-                  <DsoButton variant="ghost" className="text-xs px-2 py-1" onClick={() => ocrYamlRef.current?.click()}>
+                  <input
+                    ref={ocrYamlRef}
+                    type="file"
+                    accept=".yaml,.yml"
+                    onChange={handleOcrYamlUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="ghost"
+                    className="text-xs px-2 py-1"
+                    onClick={() => ocrYamlRef.current?.click()}
+                  >
                     Upload YAML
-                  </DsoButton>
+                  </Button>
                 </>
               )}
             </div>
             {useCustomOcr && (
-              <div className="mt-3 space-y-3">
+              <div className="space-y-3">
                 {ocrModels.map((m) => (
                   <OcrModelCard
                     key={m.name}
@@ -264,89 +340,95 @@ export default function QuickRun() {
                 ))}
               </div>
             )}
-          </DsoCard>
+          </CollapsibleSection>
 
-          <LlmConfigSection
-            enableLlm={enableLlm}
-            onEnableLlmChange={setEnableLlm}
-            llmDisabled={!!ocrEnabled[OLLAMA_VISION_MODEL]}
-            llmProvider={llmProvider}
-            onLlmProviderChange={setLlmProvider}
-            llmModel={llmModel}
-            onLlmModelChange={setLlmModel}
-            ollamaModels={ollamaLlmModels}
-            ollamaStatus={ollamaStatus}
-            openRouterModels={openRouterModels}
-            openRouterModel={promptState.llmModel}
-            onOpenRouterModelChange={promptState.setLlmModel}
-            reasoningEnabled={promptState.reasoningEnabled}
-            onReasoningEnabledChange={promptState.setReasoningEnabled}
-            radioName="llm_provider_quick"
-          />
-
-          {enableLlm && (
-            <PromptSettingsPanel
-              systemPrompt={promptState.llmSystemPrompt}
-              onSystemPromptChange={promptState.setLlmSystemPrompt}
-              userPrompt={promptState.llmUserPrompt}
-              onUserPromptChange={promptState.setLlmUserPrompt}
-              temperature={promptState.llmTemperature}
-              onTemperatureChange={promptState.setLlmTemperature}
-              maxOcrChars={promptState.llmMaxOcrChars}
-              onMaxOcrCharsChange={promptState.setLlmMaxOcrChars}
-              showToggle={true}
-              isOpen={promptState.showPromptSettings}
-              onToggle={() => promptState.setShowPromptSettings(!promptState.showPromptSettings)}
-              size="sm"
+          <CollapsibleSection title="LLM Settings">
+            <LlmConfigSection
+              enableLlm={enableLlm}
+              onEnableLlmChange={setEnableLlm}
+              llmDisabled={!!ocrEnabled[OLLAMA_VISION_MODEL]}
+              llmProvider={llmProvider}
+              onLlmProviderChange={setLlmProvider}
+              llmModel={llmModel}
+              onLlmModelChange={setLlmModel}
+              ollamaModels={ollamaLlmModels}
+              ollamaStatus={ollamaStatus}
+              openRouterModels={openRouterModels}
+              openRouterModel={promptState.llmModel}
+              onOpenRouterModelChange={promptState.setLlmModel}
+              reasoningEnabled={promptState.reasoningEnabled}
+              onReasoningEnabledChange={promptState.setReasoningEnabled}
+              radioName="llm_provider_quick"
             />
-          )}
 
-          <DsoButton onClick={handleRun} disabled={loading || !imageFile} className="w-full">
+            {enableLlm && (
+              <PromptSettingsPanel
+                systemPrompt={promptState.llmSystemPrompt}
+                onSystemPromptChange={promptState.setLlmSystemPrompt}
+                userPrompt={promptState.llmUserPrompt}
+                onUserPromptChange={promptState.setLlmUserPrompt}
+                temperature={promptState.llmTemperature}
+                onTemperatureChange={promptState.setLlmTemperature}
+                maxOcrChars={promptState.llmMaxOcrChars}
+                onMaxOcrCharsChange={promptState.setLlmMaxOcrChars}
+                showToggle={true}
+                isOpen={promptState.showPromptSettings}
+                onToggle={() => promptState.setShowPromptSettings(!promptState.showPromptSettings)}
+                size="sm"
+              />
+            )}
+          </CollapsibleSection>
+
+          <Button
+            onClick={handleRun}
+            disabled={loading || !imageFile}
+            className="w-full mt-4"
+            size="lg"
+          >
             {loading ? "Running..." : "Run Pipeline"}
-          </DsoButton>
-        </div>
-
-        <div className="space-y-4">
-          {error && <DsoErrorBanner>{error}</DsoErrorBanner>}
-
-          {result && (
-            <>
-              <div className="text-sm text-muted">
-                Total time: {result.total_processing_time_ms}ms
-              </div>
-
-              {result.ocr_results.length === 0 && (
-                <DsoCard variant="lcd">
-                  <p className="text-amber">No OCR models were run. Enable custom OCR models to get results.</p>
-                </DsoCard>
-              )}
-
-              {result.ocr_results.map((ocr, i) => (
-                <OcrResultCard
-                  key={i}
-                  modelName={ocr.model_name}
-                  processingTimeMs={ocr.processing_time_ms}
-                  confidence={ocr.confidence}
-                  rawText={ocr.raw_text}
-                  error={ocr.error}
-                  blocks={ocr.blocks}
-                  imageDataUrl={imageDataUrl}
-                  variant={ocr.blocks && ocr.blocks.length > 0 ? "full" : "compact"}
-                />
-              ))}
-
-              {result.llm && (
-                <LlmExtractionCard
-                  titleEn={result.llm.title_en}
-                  titleJa={result.llm.title_ja}
-                  code={result.llm.code}
-                  confidence={result.llm.confidence}
-                />
-              )}
-            </>
-          )}
+          </Button>
         </div>
       </div>
+
+      {error && <ErrorBanner message={error} />}
+
+      {result && (
+        <div className="space-y-4">
+          <div className="text-sm text-sand">Total time: {result.total_processing_time_ms}ms</div>
+
+          {result.ocr_results.length === 0 && (
+            <Card>
+              <p className="text-vermillion">
+                No OCR models were run. Enable custom OCR models to get results.
+              </p>
+            </Card>
+          )}
+
+          {result.ocr_results.map((ocr, i) => (
+            <OcrResultCard
+              key={i}
+              modelName={ocr.model_name}
+              processingTimeMs={ocr.processing_time_ms}
+              confidence={ocr.confidence}
+              rawText={ocr.raw_text}
+              error={ocr.error}
+              blocks={ocr.blocks}
+              imageDataUrl={imageDataUrl}
+              variant={ocr.blocks && ocr.blocks.length > 0 ? "full" : "compact"}
+            />
+          ))}
+
+          {result.llm && (
+            <LlmExtractionCard
+              titleEn={result.llm.title_en}
+              titleJa={result.llm.title_ja}
+              code={result.llm.code}
+              confidence={result.llm.confidence}
+              rawResponse={result.llm.raw_response}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,10 +3,18 @@ import { useNavigate } from "react-router-dom";
 
 import { listRuns } from "../api/pipeline";
 import type { PipelineRunResponse } from "../api/types";
-import { DsoPagination, DsoSelect, DsoTable } from "../components/dso";
 import RunStatusBadge from "../components/RunStatusBadge";
+import { EmptyState, Pagination, Table, TableSkeleton } from "../components/ui";
 
-const STATUSES = ["", "pending", "processing", "completed", "failed", "cancelled"];
+const STATUS_FILTERS = [
+  { value: "", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "processing", label: "Processing" },
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
 const LIMIT = 20;
 
 export default function Runs() {
@@ -33,85 +41,110 @@ export default function Runs() {
     const hasActive = runs.some((r) => r.status === "pending" || r.status === "processing");
     if (!hasActive) return;
     const interval = setInterval(() => {
-      listRuns({ status: statusFilter || undefined, limit: LIMIT, offset }).then((data) => {
-        setRuns(data.items);
-        setTotal(data.total);
-      }).catch(() => {});
-    }, 10000);
+      listRuns({ status: statusFilter || undefined, limit: LIMIT, offset })
+        .then((data) => {
+          setRuns(data.items);
+          setTotal(data.total);
+        })
+        .catch(() => {});
+    }, 5000);
     return () => clearInterval(interval);
   }, [runs, statusFilter, offset]);
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-bright">Pipeline Runs</h1>
-        <DsoSelect
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setOffset(0);
-          }}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s ? s.charAt(0).toUpperCase() + s.slice(1) : "All Statuses"}
-            </option>
-          ))}
-        </DsoSelect>
+    <div className="space-y-6">
+      <div className="flex gap-2">
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => {
+              setStatusFilter(f.value);
+              setOffset(0);
+            }}
+            className={`
+              px-3 py-1.5 rounded-full text-sm font-body font-medium transition-colors
+              ${
+                statusFilter === f.value
+                  ? "bg-indigo-pale text-indigo"
+                  : "bg-snow text-charcoal border border-linen hover:bg-cream"
+              }
+            `}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {loading ? (
-        <p className="tech-label breathing">Scanning...</p>
+        <TableSkeleton />
       ) : runs.length === 0 ? (
-        <p className="text-sm text-muted">No pipeline runs detected.</p>
+        <EmptyState
+          title="No pipeline runs yet"
+          description="Upload images and run OCR to see results here"
+          actionLabel="Upload Images"
+          onAction={() => navigate("/run/pipeline")}
+        />
       ) : (
         <>
-          <DsoTable
+          <Table
             columns={[
               {
+                key: "id",
                 header: "Run ID",
                 render: (run: PipelineRunResponse) => (
-                  <span className="font-mono text-xs" title={run.id}>{run.id.slice(0, 8)}</span>
+                  <span className="font-mono text-xs" title={run.id}>
+                    {run.id.slice(0, 8)}
+                  </span>
                 ),
               },
               {
+                key: "input_image_path",
                 header: "Image",
                 render: (run: PipelineRunResponse) => (
-                  <span className="max-w-48 truncate">{run.input_image_path.split("/").pop()}</span>
+                  <img
+                    src={`/api/v1/pipeline/runs/${run.id}/image`}
+                    alt=""
+                    className="size-12 rounded object-cover"
+                  />
                 ),
               },
               {
+                key: "status",
                 header: "Status",
                 render: (run: PipelineRunResponse) => <RunStatusBadge status={run.status} />,
               },
               {
+                key: "created_at",
                 header: "Created",
                 render: (run: PipelineRunResponse) => (
-                  <span className="text-xs text-muted">{new Date(run.created_at).toLocaleString()}</span>
+                  <span className="text-xs text-sand">
+                    {new Date(run.created_at).toLocaleString()}
+                  </span>
                 ),
               },
               {
+                key: "completed_at",
                 header: "Completed",
                 render: (run: PipelineRunResponse) => (
-                  <span className="text-xs text-muted">
-                    {run.completed_at ? new Date(run.completed_at).toLocaleString() : "—"}
+                  <span className="text-xs text-sand">
+                    {run.completed_at ? new Date(run.completed_at).toLocaleString() : "\u2014"}
                   </span>
                 ),
               },
             ]}
             data={runs}
-            keyFn={(run) => run.id}
-            onRowClick={(run) => navigate(`/runs/${run.id}`)}
+            onRowClick={(run) => navigate(`/runs/${(run as PipelineRunResponse).id}`)}
           />
 
-          <DsoPagination
-            page={Math.floor(offset / LIMIT) + 1}
-            totalPages={Math.ceil(total / LIMIT)}
-            totalItems={total}
-            pageSize={LIMIT}
-            onPageChange={(p) => setOffset((p - 1) * LIMIT)}
-            className="mt-4"
-          />
+          <div className="mt-4">
+            <Pagination
+              offset={offset}
+              limit={LIMIT}
+              total={total}
+              onPrev={() => setOffset(Math.max(0, offset - LIMIT))}
+              onNext={() => setOffset(offset + LIMIT)}
+            />
+          </div>
         </>
       )}
     </div>

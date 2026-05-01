@@ -1,13 +1,9 @@
-import { useRef, useState } from "react";
-import ReactCrop, {
-  centerCrop,
-  makeAspectCrop,
-  type Crop,
-  type PixelCrop,
-} from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 
-import { DsoButton } from "./dso";
+import { useRef, useState } from "react";
+import ReactCrop, { centerCrop, type Crop, makeAspectCrop, type PixelCrop } from "react-image-crop";
+
+import { Button } from "./ui";
 
 interface ImageCropperProps {
   imageDataUrl: string;
@@ -16,10 +12,7 @@ interface ImageCropperProps {
   onCancel: () => void;
 }
 
-function centerSquareCrop(
-  imageWidth: number,
-  imageHeight: number,
-): PixelCrop {
+function centerSquareCrop(imageWidth: number, imageHeight: number): PixelCrop {
   const crop = centerCrop(
     makeAspectCrop({ unit: "%", width: 80 }, 1, imageWidth, imageHeight),
     imageWidth,
@@ -43,33 +36,19 @@ function cropImage(
   canvas.width = cropWidth;
   canvas.height = cropHeight;
   const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(
-    image,
-    cropX,
-    cropY,
-    cropWidth,
-    cropHeight,
-    0,
-    0,
-    cropWidth,
-    cropHeight,
-  );
+  ctx.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
   return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          reject(new Error("Canvas toBlob failed"));
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () =>
-          resolve({ dataUrl: reader.result as string, blob });
-        reader.onerror = () => reject(new Error("Failed to read blob"));
-        reader.readAsDataURL(blob);
-      },
-      "image/png",
-    );
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Canvas toBlob failed"));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve({ dataUrl: reader.result as string, blob });
+      reader.onerror = () => reject(new Error("Failed to read blob"));
+      reader.readAsDataURL(blob);
+    }, "image/png");
   });
 }
 
@@ -109,12 +88,8 @@ export default function ImageCropper({
 
   return (
     <div className="space-y-3">
-      <div className="rounded border border-highlight/20 bg-lcd p-2">
-        <ReactCrop
-          crop={crop}
-          onChange={(c) => setCrop(c)}
-          onComplete={(c) => setCompletedCrop(c)}
-        >
+      <div className="rounded border border-linen bg-cream p-2">
+        <ReactCrop crop={crop} onChange={(c) => setCrop(c)} onComplete={(c) => setCompletedCrop(c)}>
           <img
             ref={imgRef}
             src={imageDataUrl}
@@ -125,12 +100,12 @@ export default function ImageCropper({
         </ReactCrop>
       </div>
       <div className="flex gap-2">
-        <DsoButton onClick={handleConfirm} disabled={!completedCrop || cropping}>
+        <Button onClick={handleConfirm} disabled={!completedCrop || cropping}>
           {cropping ? "Cropping..." : "Apply Crop"}
-        </DsoButton>
-        <DsoButton variant="ghost" onClick={onCancel}>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
           Cancel
-        </DsoButton>
+        </Button>
       </div>
     </div>
   );

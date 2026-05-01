@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { getOpenRouterModels } from "../api/llm";
 import { exportOCRConfig, getOCRModels, runOCR } from "../api/ocr";
 import type { ModelDescriptorResponse, OCRRunResponse, OpenRouterModel } from "../api/types";
-import { DsoButton, DsoErrorBanner, DsoSelect } from "../components/dso";
 import LlmConfigSection from "../components/LlmConfigSection";
 import LlmExtractionCard from "../components/LlmExtractionCard";
 import OcrResultCard from "../components/OcrResultCard";
@@ -11,6 +10,7 @@ import OllamaModelSelector from "../components/OllamaModelSelector";
 import PreprocessStepCard from "../components/PreprocessStepCard";
 import PromptSettingsPanel from "../components/PromptSettingsPanel";
 import SingleImageUpload from "../components/SingleImageUpload";
+import { Button, ErrorBanner, FormSkeleton } from "../components/ui";
 import { OLLAMA_VISION_MODEL } from "../constants";
 import { useLlmPromptState } from "../hooks/useLlmPromptState";
 import { useOllamaModels } from "../hooks/useOllamaModels";
@@ -39,10 +39,14 @@ export default function OcrPlayground() {
         setSelectedModel(sel?.name || (data[0]?.name ?? ""));
       })
       .catch(() => setError("Failed to load OCR models"));
-    getOpenRouterModels().then(setOpenRouterModels).catch(() => {});
+    getOpenRouterModels()
+      .then(setOpenRouterModels)
+      .catch(() => {});
   }, []);
 
   const currentModel = models.find((m) => m.name === selectedModel);
+
+  if (models.length === 0 && !error) return <FormSkeleton />;
 
   async function handleRun() {
     if (!imageFile || !selectedModel) return;
@@ -50,9 +54,7 @@ export default function OcrPlayground() {
     setError(null);
     setResult(null);
     try {
-      const effectiveLlmModel = llmProvider === "openrouter"
-        ? promptState.llmModel
-        : llmModel;
+      const effectiveLlmModel = llmProvider === "openrouter" ? promptState.llmModel : llmModel;
       const resp = await runOCR(
         imageFile,
         selectedModel,
@@ -95,10 +97,10 @@ export default function OcrPlayground() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-bright">OCR Playground</h1>
-        <DsoButton variant="secondary" onClick={handleExport}>
+        <h1 className="font-display text-xl font-bold text-ink">OCR Playground</h1>
+        <Button variant="secondary" onClick={handleExport}>
           Export Config
-        </DsoButton>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -113,20 +115,43 @@ export default function OcrPlayground() {
             }}
           />
 
-          <DsoSelect
-            label="Model"
-            value={selectedModel}
-            onChange={(e) => {
-              setSelectedModel(e.target.value);
-              if (e.target.value === OLLAMA_VISION_MODEL) setEnableLlm(false);
-            }}
-          >
-            {models.map((m) => (
-              <option key={m.name} value={m.name} disabled={!m.available}>
-                {m.label} {!m.available ? "(not available)" : !m.enabled ? "(disabled)" : ""}
-              </option>
-            ))}
-          </DsoSelect>
+          <div>
+            <span className="label-text block mb-2">Model</span>
+            <div className="grid grid-cols-1 gap-2">
+              {models.map((m) => (
+                <button
+                  key={m.name}
+                  onClick={() => {
+                    setSelectedModel(m.name);
+                    if (m.name === OLLAMA_VISION_MODEL) setEnableLlm(false);
+                  }}
+                  disabled={!m.available || !m.enabled}
+                  className={`
+                    flex items-center gap-3 rounded-lg border p-3 text-left transition-colors
+                    ${
+                      selectedModel === m.name
+                        ? "border-indigo bg-indigo-pale/30"
+                        : "border-linen bg-snow hover:border-indigo/30"
+                    }
+                    ${!m.available || !m.enabled ? "opacity-40 cursor-not-allowed" : ""}
+                  `}
+                >
+                  <span
+                    className={`size-4 shrink-0 rounded-full border-2 flex items-center justify-center ${
+                      selectedModel === m.name ? "border-indigo" : "border-linen"
+                    }`}
+                  >
+                    {selectedModel === m.name && <span className="size-2 rounded-full bg-indigo" />}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-charcoal">{m.label}</p>
+                    {!m.available && <p className="text-xs text-sand">Not available</p>}
+                    {!m.enabled && m.available && <p className="text-xs text-sand">Disabled</p>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {currentModel && currentModel.params.length > 0 && (
             <PreprocessStepCard
@@ -194,13 +219,17 @@ export default function OcrPlayground() {
             />
           )}
 
-          <DsoButton onClick={handleRun} disabled={loading || !imageFile || !selectedModel} className="w-full">
+          <Button
+            onClick={handleRun}
+            disabled={loading || !imageFile || !selectedModel}
+            className="w-full"
+          >
             {loading ? "Running OCR..." : "Run OCR"}
-          </DsoButton>
+          </Button>
         </div>
 
         <div className="space-y-4">
-          {error && <DsoErrorBanner>{error}</DsoErrorBanner>}
+          {error && <ErrorBanner message={error} />}
 
           {result && (
             <>
@@ -222,6 +251,7 @@ export default function OcrPlayground() {
                   code={result.llm.code}
                   confidence={result.llm.confidence}
                   method={result.llm.source_method}
+                  rawResponse={result.llm.raw_response}
                 />
               )}
             </>

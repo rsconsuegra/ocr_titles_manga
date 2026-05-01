@@ -9,18 +9,16 @@ import {
   setDefaultProfile,
   validateProfileImport,
 } from "../api/profiles";
-import type {
-  ProfileExportFile,
-  ProfileImportResult,
-  ProfileResponse,
-} from "../api/types";
+import type { ProfileExportFile, ProfileImportResult, ProfileResponse } from "../api/types";
 import {
-  DsoBadge,
-  DsoButton,
-  DsoErrorBanner,
-  DsoPagination,
-  DsoTable,
-} from "../components/dso";
+  Badge,
+  Button,
+  EmptyState,
+  ErrorBanner,
+  Pagination,
+  Table,
+  TableSkeleton,
+} from "../components/ui";
 
 const LIMIT = 50;
 
@@ -35,8 +33,7 @@ export default function Profiles() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<ProfileExportFile | null>(null);
   const [importFileName, setImportFileName] = useState("");
-  const [importValidation, setImportValidation] =
-    useState<ProfileImportResult | null>(null);
+  const [importValidation, setImportValidation] = useState<ProfileImportResult | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,9 +103,7 @@ export default function Profiles() {
         const result = await validateProfileImport(data);
         setImportValidation(result);
       } catch (err) {
-        setImportError(
-          err instanceof Error ? err.message : "Failed to parse file",
-        );
+        setImportError(err instanceof Error ? err.message : "Failed to parse file");
       }
     };
     reader.readAsText(file);
@@ -148,95 +143,96 @@ export default function Profiles() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-bright">
-          Pipeline Profiles
-        </h1>
+        <h1 className="font-display text-xl font-bold text-ink">Pipeline Profiles</h1>
         <div className="flex items-center gap-2">
-          <DsoButton variant="secondary" onClick={() => setImportModalOpen(true)}>
+          <Button variant="secondary" onClick={() => setImportModalOpen(true)}>
             Import
-          </DsoButton>
+          </Button>
           <Link to="/profiles/new">
-            <DsoButton>New Profile</DsoButton>
+            <Button>New Profile</Button>
           </Link>
         </div>
       </div>
 
-      {error && <DsoErrorBanner className="mb-4">{error}</DsoErrorBanner>}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} />
+        </div>
+      )}
 
       {loading ? (
-        <p className="tech-label breathing">Scanning...</p>
+        <TableSkeleton />
       ) : profiles.length === 0 ? (
-        <p className="text-sm text-muted">
-          No profiles detected. Create one to save reusable pipeline
-          configurations.
-        </p>
+        <EmptyState
+          title="No profiles"
+          description="Create a profile to save reusable pipeline configurations"
+          actionLabel="Create Profile"
+          onAction={() => navigate("/profiles/new")}
+        />
       ) : (
         <>
-          <DsoTable
+          <Table
             columns={[
               {
+                key: "name",
                 header: "Name",
                 render: (p: ProfileResponse) => (
                   <div>
-                    <div className="font-medium text-bright">{p.name}</div>
-                    {p.description && (
-                      <div className="text-xs text-muted">{p.description}</div>
-                    )}
+                    <div className="font-medium text-charcoal">{p.name}</div>
+                    {p.description && <div className="text-xs text-sand">{p.description}</div>}
                   </div>
                 ),
               },
               {
+                key: "is_default",
                 header: "Default",
                 render: (p: ProfileResponse) =>
                   p.is_default ? (
-                    <DsoBadge variant="completed">Default</DsoBadge>
+                    <Badge status="completed">Default</Badge>
                   ) : (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSetDefault(p.id);
                       }}
-                      className="text-xs text-muted hover:text-teal transition-colors"
+                      className="text-xs text-sand hover:text-indigo transition-colors"
                     >
                       Set default
                     </button>
                   ),
               },
               {
+                key: "enable_llm",
                 header: "LLM",
                 render: (p: ProfileResponse) => (
-                  <span
-                    className={`text-xs ${p.enable_llm ? "text-teal" : "text-muted"}`}
-                  >
+                  <span className={`text-xs ${p.enable_llm ? "text-indigo" : "text-sand"}`}>
                     <span
-                      className={`led ${p.enable_llm ? "led-active" : "led-off"} size-1.5 inline-block mr-1 align-middle`}
+                      className={`size-1.5 inline-block mr-1 align-middle rounded-full ${p.enable_llm ? "bg-indigo" : "bg-sand/50"}`}
                     />
                     {p.enable_llm ? "Enabled" : "Disabled"}
                     {p.enable_llm && p.llm_provider && (
-                      <span className="ml-1 text-muted">
-                        (
-                        {p.llm_provider === "ollama"
-                          ? "Ollama"
-                          : "OpenRouter"}
-                        )
+                      <span className="ml-1 text-sand">
+                        ({p.llm_provider === "ollama" ? "Ollama" : "OpenRouter"})
                       </span>
                     )}
                   </span>
                 ),
               },
               {
+                key: "updated_at",
                 header: "Updated",
                 render: (p: ProfileResponse) => (
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-sand">
                     {new Date(p.updated_at || p.created_at).toLocaleString()}
                   </span>
                 ),
               },
               {
+                key: "id",
                 header: "",
                 render: (p: ProfileResponse) => (
                   <div className="flex items-center gap-1.5">
-                    <DsoButton
+                    <Button
                       variant="ghost"
                       className="px-2 py-1"
                       onClick={() => handleExport(p.id)}
@@ -251,51 +247,51 @@ export default function Profiles() {
                         <path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.614L6.295 8.235a.75.75 0 1 0-1.09 1.03l4.25 4.5a.75.75 0 0 0 1.09 0l4.25-4.5a.75.75 0 0 0-1.09-1.03l-2.955 3.129V2.75Z" />
                         <path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z" />
                       </svg>
-                    </DsoButton>
-                    <DsoButton
+                    </Button>
+                    <Button
                       variant="secondary"
                       className="px-2 py-1 text-xs"
                       onClick={() => navigate(`/profiles/${p.id}/edit`)}
                     >
                       Edit
-                    </DsoButton>
-                    <DsoButton
+                    </Button>
+                    <Button
                       variant="danger"
                       className="px-2 py-1 text-xs"
                       onClick={() => handleDelete(p.id, p.name)}
                     >
                       Delete
-                    </DsoButton>
+                    </Button>
                   </div>
                 ),
               },
             ]}
             data={profiles}
-            keyFn={(p) => p.id}
           />
 
           {total > LIMIT && (
-            <DsoPagination
-              page={Math.floor(offset / LIMIT) + 1}
-              totalPages={Math.ceil(total / LIMIT)}
-              totalItems={total}
-              pageSize={LIMIT}
-              onPageChange={(p) => setOffset((p - 1) * LIMIT)}
-              className="mt-4"
-            />
+            <div className="mt-4">
+              <Pagination
+                offset={offset}
+                limit={LIMIT}
+                total={total}
+                onPrev={() => setOffset(Math.max(0, offset - LIMIT))}
+                onNext={() => setOffset(offset + LIMIT)}
+              />
+            </div>
           )}
         </>
       )}
 
       {importModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-lg rounded-lg border border-highlight/20 bg-panel p-6 shadow-xl">
-            <h2 className="mb-4 font-display text-lg font-bold text-bright">
-              Import Profile
-            </h2>
+          <div className="w-full max-w-lg rounded-lg border border-linen bg-snow p-6 shadow-xl">
+            <h2 className="mb-4 font-display text-lg font-bold text-ink">Import Profile</h2>
 
             {importError && (
-              <DsoErrorBanner className="mb-4">{importError}</DsoErrorBanner>
+              <div className="mb-4">
+                <ErrorBanner message={importError} />
+              </div>
             )}
 
             <div className="mb-4">
@@ -304,12 +300,10 @@ export default function Profiles() {
                 type="file"
                 accept=".json"
                 onChange={handleFileSelect}
-                className="block w-full text-sm text-muted file:mr-4 file:rounded file:border-0 file:bg-teal/20 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-teal hover:file:bg-teal/30 file:cursor-pointer"
+                className="block w-full text-sm text-sand file:mr-4 file:rounded file:border-0 file:bg-indigo-pale/50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo hover:file:bg-indigo-pale file:cursor-pointer"
               />
               {importFileName && (
-                <p className="mt-2 text-xs text-muted">
-                  Selected: {importFileName}
-                </p>
+                <p className="mt-2 text-xs text-sand">Selected: {importFileName}</p>
               )}
             </div>
 
@@ -317,16 +311,11 @@ export default function Profiles() {
               <div className="mb-4 space-y-2">
                 {importValidation.errors.length > 0 && (
                   <div className="rounded border border-red-500/30 bg-red-500/5 p-3">
-                    <p className="mb-1 text-xs font-medium text-red-400">
-                      Errors — cannot import:
-                    </p>
+                    <p className="mb-1 text-xs font-medium text-red-400">Errors — cannot import:</p>
                     <ul className="list-inside list-disc text-xs text-red-300">
                       {importValidation.errors.map((e, i) => (
                         <li key={i}>
-                          <span className="font-mono text-red-400">
-                            {e.field}
-                          </span>
-                          : {e.message}
+                          <span className="font-mono text-red-400">{e.field}</span>: {e.message}
                         </li>
                       ))}
                     </ul>
@@ -335,16 +324,11 @@ export default function Profiles() {
 
                 {importValidation.warnings.length > 0 && (
                   <div className="rounded border border-yellow-500/30 bg-yellow-500/5 p-3">
-                    <p className="mb-1 text-xs font-medium text-yellow-400">
-                      Warnings:
-                    </p>
+                    <p className="mb-1 text-xs font-medium text-yellow-400">Warnings:</p>
                     <ul className="list-inside list-disc text-xs text-yellow-300">
                       {importValidation.warnings.map((w, i) => (
                         <li key={i}>
-                          <span className="font-mono text-yellow-400">
-                            {w.field}
-                          </span>
-                          : {w.message}
+                          <span className="font-mono text-yellow-400">{w.field}</span>: {w.message}
                         </li>
                       ))}
                     </ul>
@@ -352,8 +336,8 @@ export default function Profiles() {
                 )}
 
                 {importValidation.errors.length === 0 && (
-                  <div className="rounded border border-teal/30 bg-teal/5 p-3">
-                    <p className="text-xs font-medium text-teal">
+                  <div className="rounded border border-indigo/30 bg-indigo-pale/20 p-3">
+                    <p className="text-xs font-medium text-indigo">
                       Profile is valid and ready to import.
                     </p>
                   </div>
@@ -362,10 +346,10 @@ export default function Profiles() {
             )}
 
             <div className="flex items-center justify-end gap-3">
-              <DsoButton variant="secondary" onClick={closeImportModal}>
+              <Button variant="secondary" onClick={closeImportModal}>
                 Cancel
-              </DsoButton>
-              <DsoButton
+              </Button>
+              <Button
                 onClick={handleConfirmImport}
                 disabled={
                   !importFile ||
@@ -375,7 +359,7 @@ export default function Profiles() {
                 }
               >
                 {importLoading ? "Importing..." : "Import Profile"}
-              </DsoButton>
+              </Button>
             </div>
           </div>
         </div>

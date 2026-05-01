@@ -1,6 +1,9 @@
-import { DsoBadge } from "./dso";
+import { Badge } from "./ui";
 
-const VARIANT_MAP: Record<string, "pending" | "processing" | "completed" | "failed" | "cancelled" | "default"> = {
+const VARIANT_MAP: Record<
+  string,
+  "pending" | "processing" | "completed" | "failed" | "cancelled" | "default"
+> = {
   pending: "pending",
   processing: "processing",
   completed: "completed",
@@ -9,6 +12,6 @@ const VARIANT_MAP: Record<string, "pending" | "processing" | "completed" | "fail
 };
 
 export default function RunStatusBadge({ status }: { status: string }) {
-  const variant = VARIANT_MAP[status] ?? "default";
-  return <DsoBadge variant={variant}>{status}</DsoBadge>;
+  const mapped = VARIANT_MAP[status] ?? "default";
+  return <Badge status={mapped}>{status}</Badge>;
 }

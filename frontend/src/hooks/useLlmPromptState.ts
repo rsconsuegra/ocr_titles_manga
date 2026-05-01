@@ -72,16 +72,10 @@ export function useLlmPromptState(defaults?: LlmPromptDefaults): LlmPromptState 
   }, [llmSystemPrompt, llmUserPrompt, llmTemperature, llmMaxOcrChars, llmModel, reasoningEnabled]);
 
   const loadFromProfile = useCallback(
-    (data: {
-      enable_llm: boolean;
-      llm_provider: string;
-      llm_config: LLMPromptConfig | null;
-    }) => {
+    (data: { enable_llm: boolean; llm_provider: string; llm_config: LLMPromptConfig | null }) => {
       if (data.llm_config) {
         setLlmSystemPrompt(data.llm_config.system_prompt || "");
-        setLlmUserPrompt(
-          data.llm_config.user_prompt_template || LLM_DEFAULTS.USER_PROMPT_TEMPLATE,
-        );
+        setLlmUserPrompt(data.llm_config.user_prompt_template || LLM_DEFAULTS.USER_PROMPT_TEMPLATE);
         setLlmTemperature(data.llm_config.temperature ?? LLM_DEFAULTS.TEMPERATURE);
         setLlmMaxOcrChars(data.llm_config.max_ocr_chars ?? LLM_DEFAULTS.MAX_OCR_CHARS);
         setLlmModel(data.llm_config.llm_model || "");

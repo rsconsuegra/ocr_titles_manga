@@ -31,14 +31,16 @@ export default function PromptSettingsPanel({
 }: PromptSettingsPanelProps) {
   const uid = useId();
   const textSize = size === "sm" ? "text-xs" : "text-sm";
-  const inputClass = `w-full rounded border border-highlight/20 bg-inset p-2 ${textSize} text-bright placeholder:text-muted/50 focus:border-teal/50 focus:outline-none`;
-  const numInputClass = `w-24 rounded border border-highlight/20 bg-inset p-2 ${textSize} text-bright focus:border-teal/50 focus:outline-none`;
-  const numInputClassWide = `w-32 rounded border border-highlight/20 bg-inset p-2 ${textSize} text-bright placeholder:text-muted/50 focus:border-teal/50 focus:outline-none`;
+  const inputClass = `w-full rounded border border-linen bg-snow p-2 ${textSize} text-charcoal placeholder:text-sand/50 focus:border-indigo/40 focus:outline-none`;
+  const numInputClass = `w-24 rounded border border-linen bg-snow p-2 ${textSize} text-charcoal focus:border-indigo/40 focus:outline-none`;
+  const numInputClassWide = `w-32 rounded border border-linen bg-snow p-2 ${textSize} text-charcoal placeholder:text-sand/50 focus:border-indigo/40 focus:outline-none`;
 
   const content = (
-    <div className="space-y-2 rounded border border-highlight/20 p-3">
+    <div className="space-y-2 rounded border border-linen p-3">
       <div>
-        <label htmlFor={`${uid}-sys`} className="mb-1 block text-xs text-muted">System Prompt</label>
+        <label htmlFor={`${uid}-sys`} className="mb-1 block text-xs text-sand">
+          System Prompt
+        </label>
         {size === "md" ? (
           <textarea
             id={`${uid}-sys`}
@@ -60,7 +62,9 @@ export default function PromptSettingsPanel({
         )}
       </div>
       <div>
-        <label htmlFor={`${uid}-usr`} className="mb-1 block text-xs text-muted">User Prompt Template</label>
+        <label htmlFor={`${uid}-usr`} className="mb-1 block text-xs text-sand">
+          User Prompt Template
+        </label>
         <textarea
           id={`${uid}-usr`}
           value={userPrompt}
@@ -69,10 +73,12 @@ export default function PromptSettingsPanel({
           rows={size === "md" ? 3 : 2}
           className={inputClass}
         />
-        <p className="mt-1 text-xs text-muted">Available: {"{ocr_text}"}</p>
+        <p className="mt-1 text-xs text-sand">Available: {"{ocr_text}"}</p>
       </div>
       <div>
-        <label htmlFor={`${uid}-temp`} className="mb-1 block text-xs text-muted">Temperature</label>
+        <label htmlFor={`${uid}-temp`} className="mb-1 block text-xs text-sand">
+          Temperature
+        </label>
         <input
           id={`${uid}-temp`}
           type="number"
@@ -85,7 +91,9 @@ export default function PromptSettingsPanel({
         />
       </div>
       <div>
-        <label htmlFor={`${uid}-max`} className="mb-1 block text-xs text-muted">Max OCR Characters</label>
+        <label htmlFor={`${uid}-max`} className="mb-1 block text-xs text-sand">
+          Max OCR Characters
+        </label>
         <input
           id={`${uid}-max`}
           type="number"
@@ -105,11 +113,7 @@ export default function PromptSettingsPanel({
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
-        className="text-xs text-muted hover:text-teal"
-        onClick={onToggle}
-      >
+      <button type="button" className="text-xs text-sand hover:text-indigo" onClick={onToggle}>
         {isOpen ? "▸ Hide" : "▾ Show"} Prompt Settings
       </button>
       {isOpen && content}

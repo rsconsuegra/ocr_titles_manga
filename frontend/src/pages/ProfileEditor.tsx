@@ -4,18 +4,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getOpenRouterModels } from "../api/llm";
 import { getOCRModels } from "../api/ocr";
 import { getPreprocessSteps } from "../api/preprocess";
-import {
-  createProfile,
-  getProfile,
-  updateProfile,
-} from "../api/profiles";
+import { createProfile, getProfile, updateProfile } from "../api/profiles";
 import type { ModelDescriptorResponse, OpenRouterModel, StepDescriptor } from "../api/types";
-import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import LlmConfigSection from "../components/LlmConfigSection";
 import OcrModelCard from "../components/OcrModelCard";
 import OllamaModelSelector from "../components/OllamaModelSelector";
 import PreprocessStepCard from "../components/PreprocessStepCard";
 import PromptSettingsPanel from "../components/PromptSettingsPanel";
+import { Button, Card, ErrorBanner, FormSkeleton, Input } from "../components/ui";
 import { useLlmPromptState } from "../hooks/useLlmPromptState";
 import { useOllamaModels } from "../hooks/useOllamaModels";
 import { parseStepEntries } from "../utils/configParsing";
@@ -36,7 +32,9 @@ export default function ProfileEditor() {
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
 
   const [preprocessSteps, setPreprocessSteps] = useState<StepDescriptor[]>([]);
-  const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>({});
+  const [preprocessConfig, setPreprocessConfig] = useState<Record<string, Record<string, unknown>>>(
+    {},
+  );
   const [preprocessEnabled, setPreprocessEnabled] = useState<Record<string, boolean>>({});
 
   const [ocrModels, setOcrModels] = useState<ModelDescriptorResponse[]>([]);
@@ -138,33 +136,39 @@ export default function ProfileEditor() {
     }
   }
 
-  if (pageLoading) return <p className="tech-label breathing">Loading...</p>;
+  if (pageLoading) return <FormSkeleton />;
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 font-display text-xl font-bold text-bright">
+      <h1 className="mb-6 font-display text-xl font-bold text-ink">
         {isEdit ? "Edit Profile" : "New Profile"}
       </h1>
 
-      {error && <DsoErrorBanner className="mb-4">{error}</DsoErrorBanner>}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} />
+        </div>
+      )}
 
       <div className="space-y-4">
-        <DsoInput
-          label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Manga Scan v2"
-        />
+        <Card>
+          <Input
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Manga Scan v2"
+          />
+          <Input
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional description"
+            className="mt-3"
+          />
+        </Card>
 
-        <DsoInput
-          label="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Optional description"
-        />
-
-        <DsoCard>
-          <h2 className="mb-3 tech-label-bright">Preprocessing Steps</h2>
+        <Card>
+          <h2 className="mb-3 label-text text-charcoal">Preprocessing Steps</h2>
           <div className="space-y-3">
             {preprocessSteps.map((step) => (
               <PreprocessStepCard
@@ -172,9 +176,7 @@ export default function ProfileEditor() {
                 step={step}
                 params={preprocessConfig[step.name] || {}}
                 enabled={preprocessEnabled[step.name] ?? false}
-                onParamsChange={(c) =>
-                  setPreprocessConfig((prev) => ({ ...prev, [step.name]: c }))
-                }
+                onParamsChange={(c) => setPreprocessConfig((prev) => ({ ...prev, [step.name]: c }))}
                 onEnabledChange={(v) =>
                   setPreprocessEnabled((prev) => ({ ...prev, [step.name]: v }))
                 }
@@ -182,10 +184,10 @@ export default function ProfileEditor() {
               />
             ))}
           </div>
-        </DsoCard>
+        </Card>
 
-        <DsoCard>
-          <h2 className="mb-3 tech-label-bright">OCR Models</h2>
+        <Card>
+          <h2 className="mb-3 label-text text-charcoal">OCR Models</h2>
           <div className="space-y-3">
             {ocrModels.map((m) => (
               <OcrModelCard
@@ -201,7 +203,7 @@ export default function ProfileEditor() {
               />
             ))}
           </div>
-        </DsoCard>
+        </Card>
 
         <div className="space-y-3">
           <LlmConfigSection
@@ -222,20 +224,23 @@ export default function ProfileEditor() {
             radioName="llm_provider_profile"
           />
 
-          {enableLlm && llmProvider === "ollama" && ollamaStatus?.configured && ollamaModels.length > 0 && (
-            <OllamaModelSelector
-              label="Default Ollama Model"
-              models={ollamaModels}
-              value={ollamaDefaultModel}
-              onChange={setOllamaDefaultModel}
-              showDetails
-              emptyMessage="No models found. Make sure Ollama is running."
-            />
-          )}
+          {enableLlm &&
+            llmProvider === "ollama" &&
+            ollamaStatus?.configured &&
+            ollamaModels.length > 0 && (
+              <OllamaModelSelector
+                label="Default Ollama Model"
+                models={ollamaModels}
+                value={ollamaDefaultModel}
+                onChange={setOllamaDefaultModel}
+                showDetails
+                emptyMessage="No models found. Make sure Ollama is running."
+              />
+            )}
 
           {enableLlm && (
-            <DsoCard>
-              <p className="tech-label-bright mb-2">Prompt Settings</p>
+            <Card>
+              <p className="label-text text-charcoal mb-2">Prompt Settings</p>
               <PromptSettingsPanel
                 systemPrompt={promptState.llmSystemPrompt}
                 onSystemPromptChange={promptState.setLlmSystemPrompt}
@@ -250,27 +255,27 @@ export default function ProfileEditor() {
                 onToggle={() => {}}
                 size="md"
               />
-            </DsoCard>
+            </Card>
           )}
 
-          <label className="flex items-center gap-2 text-sm text-bright">
+          <label className="flex items-center gap-2 text-sm text-charcoal">
             <input
               type="checkbox"
               checked={isDefault}
               onChange={(e) => setIsDefault(e.target.checked)}
-              className="rounded border-highlight/40 bg-inset accent-teal"
+              className="rounded border-linen bg-cream accent-indigo"
             />
             Set as default profile
           </label>
         </div>
 
         <div className="flex items-center gap-3">
-          <DsoButton onClick={handleSave} disabled={loading}>
+          <Button onClick={handleSave} disabled={loading}>
             {loading ? "Saving..." : isEdit ? "Update Profile" : "Create Profile"}
-          </DsoButton>
-          <DsoButton variant="secondary" onClick={() => navigate("/profiles")}>
+          </Button>
+          <Button variant="ghost" onClick={() => navigate("/profiles")}>
             Cancel
-          </DsoButton>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import type { OllamaModelInfo } from "../api/types";
-import { DsoSelect } from "./dso";
+import { Select } from "./ui";
 
 interface OllamaModelSelectorProps {
   label: string;
@@ -24,24 +24,27 @@ export default function OllamaModelSelector({
 }: OllamaModelSelectorProps) {
   if (models.length === 0) {
     if (emptyMessage) {
-      return <p className="text-xs text-amber">{emptyMessage}</p>;
+      return <p className="text-xs text-vermillion">{emptyMessage}</p>;
     }
     return null;
   }
 
   return (
-    <DsoSelect
+    <Select
       label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={className}
-    >
-      <option value="">{placeholder}</option>
-      {models.map((m) => (
-        <option key={m.name} value={m.name}>
-          {showDetails && m.parameter_size ? `${m.name} (${m.parameter_size}, ${m.quantization})` : m.name}
-        </option>
-      ))}
-    </DsoSelect>
+      options={[
+        { value: "", label: placeholder },
+        ...models.map((m) => ({
+          value: m.name,
+          label:
+            showDetails && m.parameter_size
+              ? `${m.name} (${m.parameter_size}, ${m.quantization})`
+              : m.name,
+        })),
+      ]}
+    />
   );
 }

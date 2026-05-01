@@ -3,9 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { cancelRun, getRunDetail, overrideResult, triggerPipeline } from "../api/pipeline";
 import type { PostProcessingResultDetail, RunDetailResponse } from "../api/types";
+import LlmExtractionCard from "../components/LlmExtractionCard";
 import OcrResultCard from "../components/OcrResultCard";
-import { DsoButton, DsoCard, DsoErrorBanner, DsoInput } from "../components/dso";
 import RunStatusBadge from "../components/RunStatusBadge";
+import { Button, Card, ErrorBanner, Input, RunDetailSkeleton } from "../components/ui";
 
 export default function RunDetail() {
   const { id } = useParams();
@@ -19,6 +20,7 @@ export default function RunDetail() {
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedOcr, setExpandedOcr] = useState<Record<string, boolean>>({});
   const editTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   /* eslint-disable react-hooks/set-state-in-effect -- data-fetching effect */
@@ -38,7 +40,9 @@ export default function RunDetail() {
   useEffect(() => {
     if (!run || !id || !isActive) return;
     const interval = setInterval(() => {
-      getRunDetail(id).then(setRun).catch(() => {});
+      getRunDetail(id)
+        .then(setRun)
+        .catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
   }, [isActive, id]);
@@ -70,7 +74,12 @@ export default function RunDetail() {
           ...ocr,
           post_processing_results: ocr.post_processing_results.map((pp) =>
             pp.id === updated.id
-              ? { ...pp, title_en: updated.title_en, title_ja: updated.title_ja, code: updated.code }
+              ? {
+                  ...pp,
+                  title_en: updated.title_en,
+                  title_ja: updated.title_ja,
+                  code: updated.code,
+                }
               : pp,
           ),
         }));
@@ -115,115 +124,160 @@ export default function RunDetail() {
     }
   }
 
-  if (loading) return <p className="tech-label breathing">Loading...</p>;
-  if (error) return <DsoErrorBanner>{error}</DsoErrorBanner>;
-  if (!run) return <p className="text-sm text-muted">Run not found.</p>;
+  if (loading) return <RunDetailSkeleton />;
+  if (error) return <ErrorBanner message={error} />;
+  if (!run) return <p className="text-sm text-sand">Run not found.</p>;
 
   return (
-    <div>
+    <div className="space-y-6">
       <button
         onClick={() => navigate("/runs")}
-        className="mb-4 text-sm text-teal hover:text-bright transition-colors"
+        className="text-sm text-indigo hover:text-ink transition-colors font-body"
       >
         &larr; Back to Runs
       </button>
 
-      <DsoCard className="mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="font-mono text-lg font-bold text-bright" title={run.id}>
-            {run.id.slice(0, 8)}
-          </h1>
-          <RunStatusBadge status={run.status} />
-          {(run.status === "pending" || run.status === "processing") && (
-            <DsoButton variant="amber" onClick={handleCancel} disabled={cancelling}>
-              {cancelling ? "Cancelling..." : "Cancel"}
-            </DsoButton>
-          )}
-          {(["failed", "completed", "cancelled"] as const).includes(run.status as "failed" | "completed" | "cancelled") && (
-            <DsoButton variant="amber" onClick={handleRetry} disabled={retrying}>
-              {retrying ? "Retrying..." : "Retry"}
-            </DsoButton>
-          )}
+      <div className="grid grid-cols-5 gap-6">
+        <div className="col-span-2">
+          <Card>
+            <img
+              src={`/api/v1/pipeline/runs/${run.id}/image`}
+              alt="Input"
+              className="w-full rounded-md"
+            />
+          </Card>
         </div>
-        <div className="mt-2 text-xs text-muted">
-          Created: {new Date(run.created_at).toLocaleString()}
-          {run.completed_at && ` | Completed: ${new Date(run.completed_at).toLocaleString()}`}
-        </div>
-        {run.error_message && (
-          <DsoErrorBanner className="mt-2">{run.error_message}</DsoErrorBanner>
-        )}
-        <div className="mt-2 text-xs text-muted">Image: {run.input_image_path}</div>
-      </DsoCard>
 
-      {run.ocr_results.length === 0 && run.status === "processing" && (
-        <p className="text-sm text-teal breathing">Processing...</p>
-      )}
-
-      {run.ocr_results.map((ocr) => (
-        <div key={ocr.id} className="mb-4">
-          <OcrResultCard
-            modelName={ocr.model_name}
-            processingTimeMs={ocr.processing_time_ms}
-            confidence={ocr.confidence}
-            rawText={ocr.raw_text}
-            error={ocr.error}
-            blocks={ocr.blocks}
-            imageDataUrl={`/api/v1/pipeline/runs/${run.id}/image`}
-            variant={ocr.blocks && ocr.blocks.length > 0 ? "full" : "compact"}
-          />
-
-          {ocr.post_processing_results.map((pp) => (
-            <div key={pp.id} className="mt-3 neo-inset rounded-lg p-3">
-              <div className="mb-1 flex items-center gap-2">
-                <span className="tech-label-bright">{pp.processing_type}</span>
+        <div className="col-span-3 space-y-4">
+          <Card>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <h1 className="font-mono text-lg font-bold text-ink" title={run.id}>
+                  {run.id.slice(0, 8)}
+                </h1>
+                <RunStatusBadge status={run.status} />
               </div>
-              <div className="text-sm">
-                <p><span className="text-muted">EN:</span> <span className="text-bright">{pp.title_en || "\u2014"}</span></p>
-                <p><span className="text-muted">JA:</span> <span className="text-bright">{pp.title_ja || "\u2014"}</span></p>
-                <p><span className="text-muted">Code:</span> <span className="text-bright">{pp.code || "\u2014"}</span></p>
+              <div>
+                <span className="label-text">Created</span>
+                <p className="text-sm text-charcoal font-body">
+                  {new Date(run.created_at).toLocaleString()}
+                </p>
               </div>
-
-              {editingResult === pp.id ? (
-                <div className="mt-2 space-y-2">
-                  <DsoInput
-                    placeholder="Title EN"
-                    value={overrideForm.title_en}
-                    onChange={(e) => setOverrideForm({ ...overrideForm, title_en: e.target.value })}
-                  />
-                  <DsoInput
-                    placeholder="Title JA"
-                    value={overrideForm.title_ja}
-                    onChange={(e) => setOverrideForm({ ...overrideForm, title_ja: e.target.value })}
-                  />
-                  <DsoInput
-                    placeholder="Code / ISBN"
-                    value={overrideForm.code}
-                    onChange={(e) => setOverrideForm({ ...overrideForm, code: e.target.value })}
-                  />
-                  <div className="flex gap-2">
-                    <DsoButton
-                      onClick={() => handleSave(pp.id)}
-                      disabled={saving}
-                    >
-                      {saving ? "Saving..." : saved ? "Saved!" : "Save Override"}
-                    </DsoButton>
-                    <DsoButton variant="secondary" onClick={() => setEditingResult(null)}>
-                      Cancel
-                    </DsoButton>
-                  </div>
+              {run.completed_at && (
+                <div>
+                  <span className="label-text">Completed</span>
+                  <p className="text-sm text-charcoal font-body">
+                    {new Date(run.completed_at).toLocaleString()}
+                  </p>
                 </div>
-              ) : (
-                <button
-                  onClick={() => startEdit(pp)}
-                  className="mt-2 text-xs text-teal hover:text-bright transition-colors"
-                >
-                  Edit / Override
-                </button>
               )}
+              <div className="flex gap-2 pt-2">
+                {(run.status === "pending" || run.status === "processing") && (
+                  <Button variant="secondary" onClick={handleCancel} disabled={cancelling}>
+                    {cancelling ? "Cancelling..." : "Cancel"}
+                  </Button>
+                )}
+                {(["failed", "completed", "cancelled"] as const).includes(
+                  run.status as "failed" | "completed" | "cancelled",
+                ) && (
+                  <Button variant="secondary" onClick={handleRetry} disabled={retrying}>
+                    {retrying ? "Retrying..." : "Retry"}
+                  </Button>
+                )}
+              </div>
             </div>
+            {run.error_message && (
+              <div className="mt-3">
+                <ErrorBanner message={run.error_message} />
+              </div>
+            )}
+          </Card>
+
+          {run.ocr_results.length === 0 && run.status === "processing" && (
+            <p className="text-sm text-indigo fade-pulse">Processing...</p>
+          )}
+
+          {run.ocr_results.map((ocr) => (
+            <Card key={ocr.id} padding="sm">
+              <button
+                onClick={() => setExpandedOcr((prev) => ({ ...prev, [ocr.id]: !prev[ocr.id] }))}
+                className="w-full flex items-center justify-between py-1 text-left"
+              >
+                <span className="font-display font-semibold text-ink">{ocr.model_name}</span>
+                <span className="text-sand text-sm">
+                  {expandedOcr[ocr.id] !== false ? "\u2212" : "+"}
+                </span>
+              </button>
+              {expandedOcr[ocr.id] !== false && (
+                <div className="pt-3 mt-2 border-t border-linen">
+                  <OcrResultCard
+                    modelName={ocr.model_name}
+                    processingTimeMs={ocr.processing_time_ms}
+                    confidence={ocr.confidence}
+                    rawText={ocr.raw_text}
+                    error={ocr.error}
+                    blocks={ocr.blocks}
+                    imageDataUrl={`/api/v1/pipeline/runs/${run.id}/image`}
+                    variant={ocr.blocks && ocr.blocks.length > 0 ? "full" : "compact"}
+                  />
+                  {ocr.post_processing_results.map((pp) => (
+                    <div key={pp.id} className="mt-3">
+                      <LlmExtractionCard
+                        titleEn={pp.title_en}
+                        titleJa={pp.title_ja}
+                        code={pp.code}
+                        confidence={pp.confidence}
+                        method={pp.processing_type}
+                        rawResponse={pp.raw_response}
+                      />
+                      {editingResult === pp.id ? (
+                        <div className="mt-3 pt-3 border-t border-linen space-y-3">
+                          <Input
+                            label="Title (EN)"
+                            value={overrideForm.title_en}
+                            onChange={(e) =>
+                              setOverrideForm({ ...overrideForm, title_en: e.target.value })
+                            }
+                          />
+                          <Input
+                            label="Title (JA)"
+                            value={overrideForm.title_ja}
+                            onChange={(e) =>
+                              setOverrideForm({ ...overrideForm, title_ja: e.target.value })
+                            }
+                          />
+                          <Input
+                            label="Code / ISBN"
+                            value={overrideForm.code}
+                            onChange={(e) =>
+                              setOverrideForm({ ...overrideForm, code: e.target.value })
+                            }
+                          />
+                          <div className="flex gap-2">
+                            <Button onClick={() => handleSave(pp.id)} disabled={saving}>
+                              {saving ? "Saving..." : saved ? "Saved!" : "Save Override"}
+                            </Button>
+                            <Button variant="ghost" onClick={() => setEditingResult(null)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startEdit(pp)}
+                          className="mt-2 text-xs text-indigo hover:text-ink transition-colors font-body"
+                        >
+                          Edit / Override
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }

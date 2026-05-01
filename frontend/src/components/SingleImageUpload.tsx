@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 
 import { useFileReader } from "../hooks/useFileReader";
-import { DsoButton } from "./dso";
 import ImageCropper from "./ImageCropper";
+import { Button } from "./ui";
 
 interface SingleImageUploadProps {
   imageDataUrl: string;
@@ -57,9 +57,7 @@ export default function SingleImageUpload({
   function handleStartCrop() {
     setOriginalDataUrl(imageDataUrl);
     if (!originalFile) {
-      setOriginalFile(
-        new File([], fileName || "image.png", { type: "image/png" }),
-      );
+      setOriginalFile(new File([], fileName || "image.png", { type: "image/png" }));
     }
     setIsCropping(true);
   }
@@ -83,7 +81,7 @@ export default function SingleImageUpload({
 
   return (
     <div>
-      <p className="tech-label mb-1">Image</p>
+      <span className="label-text mb-2 block">Image</span>
       <input
         ref={fileRef}
         type="file"
@@ -92,23 +90,23 @@ export default function SingleImageUpload({
         className="hidden"
       />
       <div className="flex flex-wrap gap-2">
-        <DsoButton variant="secondary" onClick={() => fileRef.current?.click()}>
+        <Button variant="secondary" onClick={() => fileRef.current?.click()}>
           {imageDataUrl ? "Change Image" : "Upload Image"}
-        </DsoButton>
+        </Button>
         {showPaste && (
-          <DsoButton variant="secondary" onClick={handlePaste}>
+          <Button variant="secondary" onClick={handlePaste}>
             Paste
-          </DsoButton>
+          </Button>
         )}
         {imageDataUrl && !isCropping && (
-          <DsoButton variant="ghost" onClick={handleStartCrop}>
+          <Button variant="ghost" onClick={handleStartCrop}>
             Crop
-          </DsoButton>
+          </Button>
         )}
         {originalDataUrl && !isCropping && (
-          <DsoButton variant="ghost" onClick={handleResetCrop}>
+          <Button variant="ghost" onClick={handleResetCrop}>
             Reset Crop
-          </DsoButton>
+          </Button>
         )}
       </div>
       {isCropping ? (
@@ -125,7 +123,7 @@ export default function SingleImageUpload({
           <img
             src={imageDataUrl}
             alt="Preview"
-            className="mt-2 max-h-48 rounded border border-highlight/20"
+            className="mt-2 max-h-48 rounded border border-linen"
           />
         )
       )}

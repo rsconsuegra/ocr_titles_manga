@@ -1,9 +1,5 @@
 import { apiFetch } from "./pipeline";
-import type {
-  PreviewPipelineResponse,
-  PreviewStepResponse,
-  StepDescriptor,
-} from "./types";
+import type { PreviewPipelineResponse, PreviewStepResponse, StepDescriptor } from "./types";
 
 export async function getPreprocessSteps(): Promise<StepDescriptor[]> {
   return apiFetch<StepDescriptor[]>("/api/v1/preprocess/steps");
