@@ -71,6 +71,7 @@ class LLMResultData(BaseModel):
     code: str | None = None
     confidence: float = 0.0
     source_method: str = "llm"
+    raw_response: str | None = None
 
 
 class OCRRunResponse(BaseModel):

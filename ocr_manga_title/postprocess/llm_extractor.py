@@ -36,13 +36,29 @@ _EXTRACT_JSON_SCHEMA: dict[str, Any] = {
     "required": ["title_en", "title_ja", "code", "confidence"],
 }
 
+_FIELD_ALIASES: dict[str, str] = {
+    "manga_name": "title_en",
+    "manga_title": "title_en",
+    "english_title": "title_en",
+    "series_name": "title_en",
+    "series_title": "title_en",
+    "japanese_title": "title_ja",
+    "japanese_name": "title_ja",
+    "native_title": "title_ja",
+    "original_title": "title_ja",
+    "six_digit_number": "code",
+    "sauce": "code",
+    "source_id": "code",
+    "nhentai_code": "code",
+}
+
 
 class LLMExtractor:
     """Extracts structured manga title metadata from raw OCR text using an LLM.
 
     Supports two backends:
-      * **openrouter** — OpenAI-compatible API via the ``openai`` client.
-      * **ollama** — Native Ollama ``/api/chat`` endpoint via ``httpx``.
+      * **openrouter** -- OpenAI-compatible API via the ``openai`` client.
+      * **ollama** -- Native Ollama ``/api/chat`` endpoint via ``httpx``.
     """
 
     def __init__(
@@ -91,14 +107,14 @@ class LLMExtractor:
             logger.warning("Prompt file not found: %s, using fallback", self._prompt_path)
             return _FALLBACK_PROMPT
 
-    def extract(self, raw_text: str, model: str | None = None) -> ExtractedTitle:
+    def extract(self, raw_text: str, model: str | None = None, *, supports_json_mode: bool = True) -> ExtractedTitle:
         """Send raw OCR text to the LLM and parse the structured response."""
         if self._provider == "ollama":
             return self._extract_ollama(raw_text, model)
-        return self._extract_openrouter(raw_text, model)
+        return self._extract_openrouter(raw_text, model, supports_json_mode=supports_json_mode)
 
     def _extract_openrouter(
-        self, raw_text: str, model: str | None = None
+        self, raw_text: str, model: str | None = None, *, supports_json_mode: bool = True
     ) -> ExtractedTitle:
         import openai as _openai
 
@@ -114,23 +130,42 @@ class LLMExtractor:
             else raw_text
         )
 
+        base_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": temperature,
+            "timeout": self._timeout,
+        }
+        if self._prompt_config and self._prompt_config.reasoning_enabled:
+            base_kwargs["extra_body"] = {"reasoning": {"enabled": True}}
+
+        if supports_json_mode:
+            content = self._call_openai(base_kwargs, json_mode=True, _openai=_openai)
+            if not content.strip():
+                logger.warning(
+                    "JSON mode returned empty for model=%s, retrying without response_format",
+                    model,
+                )
+                content = self._call_openai(base_kwargs, json_mode=False, _openai=_openai)
+        else:
+            content = self._call_openai(base_kwargs, json_mode=False, _openai=_openai)
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.debug("LLM latency=%dms, model=%s", elapsed_ms, model)
+
+        return self._build_result(content, model)
+
+    def _call_openai(
+        self, base_kwargs: dict[str, Any], *, json_mode: bool, _openai: Any
+    ) -> str:
+        kwargs = {**base_kwargs}
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         try:
-            create_kwargs: dict[str, Any] = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-                "temperature": temperature,
-                "response_format": {"type": "json_object"},
-                "timeout": self._timeout,
-            }
-            if (
-                self._prompt_config
-                and self._prompt_config.reasoning_enabled
-            ):
-                create_kwargs["extra_body"] = {"reasoning": {"enabled": True}}
-            response = self._openai_client.chat.completions.create(**create_kwargs)
+            response = self._openai_client.chat.completions.create(**kwargs)  # type: ignore[union-attr]
         except _openai.AuthenticationError as e:
             raise LLMExtractionError(f"Authentication error: {e}") from e
         except (_openai.APIError, _openai.APITimeoutError) as e:
@@ -138,32 +173,15 @@ class LLMExtractor:
         except Exception as e:
             raise LLMExtractionError(f"Unexpected error calling LLM: {e}") from e
 
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        content = response.choices[0].message.content or ""
-
         if response.usage:
             logger.debug(
-                "LLM token usage: prompt=%d, completion=%d, total=%d, latency=%dms",
+                "LLM token usage: prompt=%d, completion=%d, total=%d",
                 response.usage.prompt_tokens,
                 response.usage.completion_tokens,
                 response.usage.total_tokens,
-                elapsed_ms,
             )
 
-        parsed = self._parse_json(content)
-        if parsed is None:
-            raise LLMExtractionError(
-                f"Failed to parse LLM response as JSON: {content[:200]}"
-            )
-
-        return ExtractedTitle(
-            title_en=parsed.get("title_en"),
-            title_ja=parsed.get("title_ja"),
-            code=parsed.get("code"),
-            confidence=float(parsed.get("confidence", 0.0)),
-            source_model=model,
-            source_method="llm",
-        )
+        return response.choices[0].message.content or ""
 
     def _extract_ollama(
         self, raw_text: str, model: str | None = None
@@ -184,13 +202,15 @@ class LLMExtractor:
             else raw_text
         )
 
+        messages = [
+            {"role": "system", "content": self._system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
         try:
             result = chat_completion_sync(
                 model=effective_model,
-                messages=[
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
+                messages=messages,
                 format=_EXTRACT_JSON_SCHEMA,
                 temperature=temperature,
                 timeout=self._ollama_config.timeout,
@@ -198,25 +218,63 @@ class LLMExtractor:
         except (_httpx.HTTPError, RuntimeError) as e:
             raise LLMExtractionError(f"Ollama API error: {e}") from e
 
-        elapsed_ms = int((time.monotonic() - start) * 1000)
         content = result.get("message", {}).get("content", "")
 
+        if not content.strip():
+            logger.warning(
+                "Structured output returned empty for Ollama model=%s, retrying without format",
+                effective_model,
+            )
+            try:
+                result = chat_completion_sync(
+                    model=effective_model,
+                    messages=messages,
+                    temperature=temperature,
+                    timeout=self._ollama_config.timeout,
+                )
+            except (_httpx.HTTPError, RuntimeError) as e:
+                raise LLMExtractionError(f"Ollama API error: {e}") from e
+            content = result.get("message", {}).get("content", "")
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
         logger.debug("Ollama LLM latency=%dms, model=%s", elapsed_ms, effective_model)
+
+        return self._build_result(content, effective_model)
+
+    def _build_result(self, content: str, model: str) -> ExtractedTitle:
+        logger.info("LLM response: %d chars, model=%s", len(content), model)
+
+        if not content.strip():
+            return ExtractedTitle(
+                raw_response=content,
+                confidence=0.0,
+                source_model=model,
+                source_method="llm_empty",
+            )
 
         parsed = self._parse_json(content)
         if parsed is None:
-            raise LLMExtractionError(
-                f"Failed to parse Ollama response as JSON: {content[:200]}"
+            return ExtractedTitle(
+                raw_response=content,
+                confidence=0.0,
+                source_model=model,
+                source_method="llm_unparsed",
             )
 
+        normalized = self._normalize_keys(parsed)
         return ExtractedTitle(
-            title_en=parsed.get("title_en"),
-            title_ja=parsed.get("title_ja"),
-            code=parsed.get("code"),
-            confidence=float(parsed.get("confidence", 0.0)),
-            source_model=effective_model,
+            title_en=normalized.get("title_en"),
+            title_ja=normalized.get("title_ja"),
+            code=normalized.get("code"),
+            confidence=float(normalized.get("confidence", 0.0)),
+            source_model=model,
             source_method="llm",
+            raw_response=content,
         )
+
+    @staticmethod
+    def _normalize_keys(parsed: dict[str, Any]) -> dict[str, Any]:
+        return {_FIELD_ALIASES.get(k, k): v for k, v in parsed.items()}
 
     def _parse_json(self, content: str) -> dict[str, Any] | None:
         try:

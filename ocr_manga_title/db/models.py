@@ -113,6 +113,7 @@ class PostProcessingResult(Base):
     system_prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     temperature_used: Mapped[float | None] = mapped_column(Float, nullable=True)
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     ocr_result: Mapped["OCRResult"] = relationship(

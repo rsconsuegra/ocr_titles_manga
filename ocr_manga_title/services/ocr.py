@@ -135,7 +135,7 @@ def run_llm_extraction(
     Returns :class:`LLMResultData` (or failure placeholder).
     """
     try:
-        from ocr_manga_title.config import load_config
+        from ocr_manga_title.config import load_config, load_openrouter_models
         from ocr_manga_title.postprocess.llm_extractor import LLMExtractor
         from ocr_manga_title.schemas import LLMPromptConfig
 
@@ -155,7 +155,12 @@ def run_llm_extraction(
         if not effective_model and prompt_config and prompt_config.llm_model:
             effective_model = prompt_config.llm_model
         logger.info("LLM extraction started (provider=%s, model=%s)", effective_provider, effective_model)
-        extracted = extractor.extract(raw_text, model=effective_model)
+        supports_json = True
+        if effective_model and effective_provider == "openrouter":
+            models_list = load_openrouter_models()
+            model_info = next((m for m in models_list if m.get("id") == effective_model), {})
+            supports_json = model_info.get("supports_json_mode", True)
+        extracted = extractor.extract(raw_text, model=effective_model, supports_json_mode=supports_json)
         llm_ms = int((time.monotonic() - llm_start) * 1000)
         logger.info("LLM extraction finished in %dms", llm_ms)
         return LLMResultData(
@@ -164,6 +169,7 @@ def run_llm_extraction(
             code=extracted.code,
             confidence=extracted.confidence,
             source_method=extracted.source_method,
+            raw_response=extracted.raw_response,
         )
     except Exception:
         logger.warning("LLM extraction failed", exc_info=True)

@@ -225,6 +225,7 @@ class ExtractedTitle(BaseModel):
     confidence: float = 0.0
     source_model: str | None = None
     source_method: str = "unknown"
+    raw_response: str | None = None
 
     @field_validator("confidence")
     @classmethod

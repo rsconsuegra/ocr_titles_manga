@@ -3,6 +3,7 @@ models:
     label: Gemini 2.5 Flash
   - id: minimax/minimax-m2.5:free
     label: MiniMax M2.5(free)
+    supports_json_mode: false
   - id: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
     label: Nemotron 3 Nano Reasoning (free)
   - id: meta-llama/llama-3.3-70b-instruct:free

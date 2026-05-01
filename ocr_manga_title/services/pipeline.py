@@ -62,6 +62,7 @@ async def save_pipeline_results(
                     "confidence": pipeline_result.extracted.confidence,
                     "processing_type": pipeline_result.extracted.source_method
                     or "unknown",
+                    "raw_response": pipeline_result.extracted.raw_response,
                 }
                 if llm_config:
                     pp_kwargs["system_prompt_used"] = llm_config.get("system_prompt", "")

@@ -5,6 +5,14 @@
       "type": "remote",
       "url": "https://mcp.eu.algolia.com/1/M_CIMvH38zVydbZOtDAzTjI3szBOMUq0tDA0NTJOMjO3TEtLtUwxNDUxNrfOrdRNyU8u1s1NLMpOyS_PszY0NzMyNDA1sDQFAA/mcp",
       "enabled": true
+    },
+    "zai-vision": {
+      "type": "local",
+      "command": ["npx", "-y", "@z_ai/mcp-server"],
+      "environment": {
+        "Z_AI_API_KEY": "{env:Z_AI_API_KEY}",
+        "Z_AI_MODE": "ZHIPU"
+      }
     }
   },
   "plugin": [
