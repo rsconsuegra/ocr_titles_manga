@@ -1,6 +1,6 @@
 BUILDER = manga-ocr
 
-.PHONY: test lint run setup notebook db-up db-down migrate migrate-create clean worker api frontend setup-db typecheck security frontend-lint frontend-format dev dev-cpu dev-gpu stop docker-build docker-build-gpu docker-up docker-down reset ensure-builder
+.PHONY: test lint run setup notebook db-up db-down migrate migrate-create clean worker api frontend setup-db typecheck security frontend-lint frontend-format screenshot dev dev-cpu dev-gpu stop docker-build docker-build-gpu docker-up docker-down reset ensure-builder
 
 setup:
 	uv sync --extra cpu --group dev
@@ -66,6 +66,9 @@ frontend-lint:
 
 frontend-format:
 	cd frontend && npm run format:check
+
+screenshot:
+	NODE_PATH=./frontend/node_modules node scripts/screenshot.mjs
 
 ensure-builder:
 	@docker buildx inspect $(BUILDER) >/dev/null 2>&1 || \

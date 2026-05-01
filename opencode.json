@@ -9,9 +9,10 @@
     "zai-vision": {
       "type": "local",
       "command": ["npx", "-y", "@z_ai/mcp-server"],
+      "timeout": 120000,
       "environment": {
         "Z_AI_API_KEY": "{env:Z_AI_API_KEY}",
-        "Z_AI_MODE": "ZHIPU"
+        "Z_AI_MODE": "ZAI"
       }
     }
   },
