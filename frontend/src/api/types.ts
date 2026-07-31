@@ -136,6 +136,7 @@ export interface LLMResultData {
   source_method: string;
   raw_response: string | null;
   extra_metadata: Record<string, string> | null;
+  error: string | null;
 }
 
 export interface OCRRunResponse {

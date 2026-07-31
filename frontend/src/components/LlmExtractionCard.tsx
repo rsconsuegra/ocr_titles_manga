@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import ConfidenceMeter from "./ConfidenceMeter";
+import ErrorBanner from "./ui/ErrorBanner";
 import { Card } from "./ui";
 
 interface LlmExtractionCardProps {
@@ -11,6 +12,7 @@ interface LlmExtractionCardProps {
   method?: string;
   rawResponse?: string | null;
   extraMetadata?: Record<string, string> | null;
+  error?: string | null;
 }
 
 const LABEL_OVERRIDES: Record<string, string> = {
@@ -33,6 +35,7 @@ export default function LlmExtractionCard({
   method,
   rawResponse,
   extraMetadata,
+  error,
 }: LlmExtractionCardProps) {
   const [showRaw, setShowRaw] = useState(false);
   const hasStructuredData = !!(titleEn || titleJa || code);
@@ -41,6 +44,11 @@ export default function LlmExtractionCard({
   return (
     <Card accent="indigo">
       <h3 className="mb-2 text-sm font-semibold text-indigo">LLM Extraction</h3>
+      {error && (
+        <div className="mb-3">
+          <ErrorBanner message={error} />
+        </div>
+      )}
       <div className="space-y-1 text-sm">
         {titleEn && (
           <div>
