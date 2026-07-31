@@ -46,7 +46,6 @@ RUN mkdir -p /app/uploads /app/cache /app/model_data/paddleocr /app/model_data/e
 
 ENV MODEL_DIR=/app/models
 ENV MODEL_DATA_DIR=/app/model_data
-ENV PADDLEOCR_HOME=/app/model_data/paddleocr
 RUN mkdir -p /app/models && python -c "\
 from ocr_manga_title.preprocess.steps.upscale import UpscaleStep; \
 step = UpscaleStep(); \
@@ -54,6 +53,7 @@ step = UpscaleStep(); \
     chown -R appuser:appuser /app/models
 
 USER appuser
+RUN PYTHONPATH=/app python scripts/preload_models.py
 
 EXPOSE 8000
 
