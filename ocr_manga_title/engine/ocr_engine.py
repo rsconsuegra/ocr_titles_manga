@@ -91,7 +91,9 @@ class OCREngine:
                 continue
 
             try:
-                model = descriptor.model_cls(config)
+                from ocr_manga_title.engine.cache import get_or_create_model
+
+                model = get_or_create_model(name, descriptor.model_cls, config)
             except (ImportError, RuntimeError) as e:
                 logger.error("Failed to instantiate model '%s': %s", name, e)
                 skipped.append(f"{name} (init error)")

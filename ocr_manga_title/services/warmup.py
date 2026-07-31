@@ -1,10 +1,6 @@
 """Eager loading of local OCR models on application startup."""
 
-import contextlib
-import io
 import logging
-import warnings
-from typing import Any
 
 from ocr_manga_title.engine.registry import (
     MODEL_REGISTRY,
@@ -18,14 +14,6 @@ logger = logging.getLogger(__name__)
 _LOCAL_MODELS = {"paddle", "easyocr", "tesseract"}
 
 
-class _QuietStdout(io.TextIOBase):
-    def write(self, *_args: Any) -> None:  # type: ignore[override]
-        pass
-
-    def flush(self) -> None:
-        pass
-
-
 def _warmup_model(name: str, descriptor: ModelDescriptor) -> bool:
     config = ModelConfig(
         name=name,
@@ -33,14 +21,12 @@ def _warmup_model(name: str, descriptor: ModelDescriptor) -> bool:
         parameters={**registry_defaults(descriptor), "language": "eng"},
     )
     try:
-        instance = descriptor.model_cls(config)
+        from ocr_manga_title.engine.cache import get_or_create_model
+
+        instance = get_or_create_model(name, descriptor.model_cls, config)
         if not instance.is_available:
             logger.info("Model '%s' not available, skipping warmup", name)
             return False
-
-        with contextlib.redirect_stdout(_QuietStdout()):  # type: ignore[type-var]
-            warnings.filterwarnings("ignore", category=SyntaxWarning)
-            instance.warmup()
 
         logger.info("Model '%s' warmed up successfully", name)
         return True
