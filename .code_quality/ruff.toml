@@ -37,6 +37,7 @@ lint.ignore = [
 "migrations/**" = ["D", "E", "F"]
 "*.ipynb" = ["T201"]
 "ocr_manga_title/cli.py" = ["T201"]
+"scripts/**" = ["T201", "D"]
 
 # Format string options
 [format]
