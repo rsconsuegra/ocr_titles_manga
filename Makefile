@@ -1,6 +1,8 @@
 BUILDER = manga-ocr
+GPU_COMPOSE = -f docker-compose.yml -f docker-compose.gpu.yml
+DB_SERVICES = postgres redis
 
-.PHONY: test lint run setup notebook db-up db-down migrate migrate-create clean worker api frontend setup-db typecheck security frontend-lint frontend-format screenshot dev dev-cpu dev-gpu stop docker-build docker-build-gpu docker-up docker-down reset ensure-builder
+.PHONY: test lint run setup notebook db-up db-down migrate migrate-down migrate-create clean worker api frontend setup-db typecheck security frontend-lint frontend-format screenshot dev dev-cpu dev-gpu stop docker-build docker-build-gpu docker-up docker-down reset ensure-builder
 
 setup:
 	uv sync --extra cpu --group dev
@@ -32,12 +34,12 @@ notebook:
 
 db-up:
 	colima start 2>/dev/null || true
-	docker compose -f docker-compose.dev.yml up -d
+	docker compose up -d $(DB_SERVICES)
 	@echo "Waiting for databases..."
 	@sleep 3
 
 db-down:
-	docker compose -f docker-compose.dev.yml down
+	docker compose rm -fs $(DB_SERVICES)
 
 migrate:
 	uv run --extra cpu alembic upgrade head
@@ -53,9 +55,9 @@ setup-db: db-up migrate
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 
-reset: docker-down
+reset:
+	docker compose down -v
 	rm -rf ./uploads
-	docker volume rm $$(docker volume ls -q -f name=$${COMPOSE_PROJECT_DIR:-manga_ocr}) 2>/dev/null || true
 	@echo "Reset complete. Run 'make dev' to start fresh."
 
 worker:
@@ -75,22 +77,20 @@ ensure-builder:
 		docker buildx create --name $(BUILDER) --driver docker-container --use
 	@docker buildx use $(BUILDER) 2>/dev/null || true
 
-dev: ensure-builder
-	colima start 2>/dev/null || true
-	OCR_EXTRA=cpu docker compose up --build
+dev: dev-cpu
 
 dev-cpu: ensure-builder
 	colima start 2>/dev/null || true
 	OCR_EXTRA=cpu docker compose up --build
 
 dev-gpu: ensure-builder
-	OCR_EXTRA=cu126 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+	OCR_EXTRA=cu126 docker compose $(GPU_COMPOSE) up --build
 
 docker-build: ensure-builder
 	OCR_EXTRA=$${OCR_EXTRA:-cpu} docker compose build
 
 docker-build-gpu: ensure-builder
-	OCR_EXTRA=cu126 docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
+	OCR_EXTRA=cu126 docker compose $(GPU_COMPOSE) build
 
 docker-up:
 	docker compose up -d
@@ -99,5 +99,4 @@ docker-down:
 	docker compose down
 
 stop:
-	docker compose -f docker-compose.dev.yml stop
 	docker compose stop
