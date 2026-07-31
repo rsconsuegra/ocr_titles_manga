@@ -38,10 +38,6 @@ from ocr_manga_title.settings import (
 
 logger = logging.getLogger(__name__)
 
-if logging.getLogger().handlers:
-    from ocr_manga_title.services.warmup import warmup_models
-    warmup_models()
-
 MIN_MEMORY_MB = 512
 _MAX_ERROR_LENGTH = 1000
 

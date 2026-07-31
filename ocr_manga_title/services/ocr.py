@@ -94,7 +94,9 @@ def run_single_model(
     config, model_cls = result
 
     try:
-        instance = model_cls(config)
+        from ocr_manga_title.engine.cache import get_or_create_model
+
+        instance = get_or_create_model(model_name, model_cls, config)
     except Exception as e:
         return OCRResultData(model_name=model_name, error=f"Init failed: {e}")
 
