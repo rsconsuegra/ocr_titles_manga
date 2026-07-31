@@ -24,13 +24,13 @@ def mock_paddleocr():
 
 
 class TestPaddleModelAvailability:
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_is_available_true_when_installed(self, mock_find):
         mock_find.return_value = MagicMock()
         model = PaddleModel(_make_config())
         assert model.is_available is True
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_is_available_false_when_missing(self, mock_find):
         mock_find.return_value = None
         model = PaddleModel(_make_config())
@@ -38,19 +38,19 @@ class TestPaddleModelAvailability:
 
 
 class TestPaddleModelRun:
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_run_raises_when_not_available(self, mock_find):
         mock_find.return_value = None
         model = PaddleModel(_make_config())
         with pytest.raises(ModelNotAvailableError):
             model.run("test.png")
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_name_returns_paddle(self, mock_find):
         model = PaddleModel(_make_config())
         assert model.name == "paddle"
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_run_returns_ocr_result_with_text(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         mock_cls, mock_instance = mock_paddleocr
@@ -72,7 +72,7 @@ class TestPaddleModelRun:
         assert result.model_name == "paddle"
         assert result.processing_time_ms >= 0
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_run_returns_empty_on_error(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         _, mock_instance = mock_paddleocr
@@ -85,7 +85,7 @@ class TestPaddleModelRun:
         assert result.confidence == 0.0
         assert "corrupt image" in result.error
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_run_returns_empty_for_null_result(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         _, mock_instance = mock_paddleocr
@@ -97,7 +97,7 @@ class TestPaddleModelRun:
         assert result.raw_text == ""
         assert result.confidence == 0.0
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_lazy_load_creates_model_once(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         mock_cls, mock_instance = mock_paddleocr
@@ -109,7 +109,7 @@ class TestPaddleModelRun:
 
         assert mock_cls.call_count == 1
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_configurable_language_and_gpu(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         mock_cls, mock_instance = mock_paddleocr
@@ -122,7 +122,7 @@ class TestPaddleModelRun:
         assert kwargs["lang"] == "japan"
         assert kwargs["use_gpu"] is True
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_gpu_fallback_to_cpu(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         mock_cls, mock_instance = mock_paddleocr
@@ -145,7 +145,7 @@ class TestPaddleModelRun:
         assert call_count == 2
         assert result.model_name == "paddle"
 
-    @patch("ocr_manga_title.engine.paddle_model.importlib.util.find_spec")
+    @patch("ocr_manga_title.engine.base.importlib.util.find_spec")
     def test_multiple_pages_and_lines(self, mock_find, mock_paddleocr):
         mock_find.return_value = MagicMock()
         _, mock_instance = mock_paddleocr

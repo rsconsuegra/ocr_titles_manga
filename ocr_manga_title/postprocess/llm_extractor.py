@@ -16,6 +16,8 @@ from ocr_manga_title.schemas import (
     OllamaConfig,
     OpenRouterConfig,
 )
+from ocr_manga_title.services.ollama import ChatCompletionRequest, chat_completion_sync
+from ocr_manga_title.settings import DEFAULT_LLM_PROMPT_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,16 @@ class LLMExtractor:
         prompt_path: str | Path | None = None,
         prompt_config: LLMPromptConfig | None = None,
     ):
+        """Initialize the LLM extractor.
+
+        Args:
+            openrouter_config: OpenRouter API credentials and settings.
+            ollama_config: Ollama API settings.
+            provider: LLM backend to use ("openrouter" or "ollama").
+            prompt_path: Optional path to a system prompt file.
+            prompt_config: Optional prompt configuration overrides.
+
+        """
         self._provider = provider
         self._ollama_config = ollama_config
         self._prompt_config = prompt_config
@@ -89,12 +101,7 @@ class LLMExtractor:
             self._prompt_path = Path(prompt_path)
             self._system_prompt = self._load_prompt()
         else:
-            self._prompt_path = (
-                Path(__file__).resolve().parent.parent.parent
-                / "prompts"
-                / "llm"
-                / "extract_title_v1.md"
-            )
+            self._prompt_path = DEFAULT_LLM_PROMPT_PATH
             self._system_prompt = self._load_prompt()
 
         self._openai_client = None
@@ -114,7 +121,9 @@ class LLMExtractor:
         try:
             return self._prompt_path.read_text().strip()
         except FileNotFoundError:
-            logger.warning("Prompt file not found: %s, using fallback", self._prompt_path)
+            logger.warning(
+                "Prompt file not found: %s, using fallback", self._prompt_path
+            )
             return _FALLBACK_PROMPT
 
     def extract(self, raw_text: str, model: str | None = None) -> ExtractedTitle:
@@ -132,8 +141,26 @@ class LLMExtractor:
         model_info = next((m for m in models_list if m.get("id") == model), {})
         return bool(model_info.get("supports_json_mode", True))
 
+    def _resolve_call_params(
+        self,
+        raw_text: str,
+    ) -> tuple[float, str, list[dict[str, str]]]:
+        temperature = self._prompt_config.temperature if self._prompt_config else 0.1
+        user_content = (
+            self._prompt_config.render_user_prompt(raw_text)
+            if self._prompt_config
+            else raw_text
+        )
+        messages = [
+            {"role": "system", "content": self._system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+        return temperature, user_content, messages
+
     def _extract_openrouter(
-        self, raw_text: str, model: str | None = None,
+        self,
+        raw_text: str,
+        model: str | None = None,
     ) -> ExtractedTitle:
         import openai as _openai
 
@@ -143,19 +170,11 @@ class LLMExtractor:
         model = model or self._model
         supports_json_mode = self._resolve_json_support(model)
         start = time.monotonic()
-        temperature = self._prompt_config.temperature if self._prompt_config else 0.1
-        user_content = (
-            self._prompt_config.render_user_prompt(raw_text)
-            if self._prompt_config
-            else raw_text
-        )
+        temperature, _user_content, messages = self._resolve_call_params(raw_text)
 
         base_kwargs: dict[str, Any] = {
             "model": model,
-            "messages": [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": user_content},
-            ],
+            "messages": messages,
             "temperature": temperature,
             "timeout": self._timeout,
         }
@@ -169,7 +188,9 @@ class LLMExtractor:
                     "JSON mode returned empty for model=%s, retrying without response_format",
                     model,
                 )
-                content = self._call_openai(base_kwargs, json_mode=False, _openai=_openai)
+                content = self._call_openai(
+                    base_kwargs, json_mode=False, _openai=_openai
+                )
         else:
             content = self._call_openai(base_kwargs, json_mode=False, _openai=_openai)
 
@@ -208,32 +229,22 @@ class LLMExtractor:
     ) -> ExtractedTitle:
         import httpx as _httpx
 
-        from ocr_manga_title.services.ollama import chat_completion_sync
-
         if not self._ollama_config:
             raise LLMExtractionError("Ollama config not provided")
 
         effective_model = model or self._ollama_config.default_model
         start = time.monotonic()
-        temperature = self._prompt_config.temperature if self._prompt_config else 0.1
-        user_content = (
-            self._prompt_config.render_user_prompt(raw_text)
-            if self._prompt_config
-            else raw_text
-        )
-
-        messages = [
-            {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": user_content},
-        ]
+        temperature, _user_content, messages = self._resolve_call_params(raw_text)
 
         try:
             result = chat_completion_sync(
-                model=effective_model,
-                messages=messages,
-                format=_EXTRACT_JSON_SCHEMA,
-                temperature=temperature,
-                timeout=self._ollama_config.timeout,
+                ChatCompletionRequest(
+                    model=effective_model,
+                    messages=messages,
+                    format=_EXTRACT_JSON_SCHEMA,
+                    temperature=temperature,
+                    timeout=self._ollama_config.timeout,
+                )
             )
         except (_httpx.HTTPError, RuntimeError) as e:
             raise LLMExtractionError(f"Ollama API error: {e}") from e
@@ -247,10 +258,12 @@ class LLMExtractor:
             )
             try:
                 result = chat_completion_sync(
-                    model=effective_model,
-                    messages=messages,
-                    temperature=temperature,
-                    timeout=self._ollama_config.timeout,
+                    ChatCompletionRequest(
+                        model=effective_model,
+                        messages=messages,
+                        temperature=temperature,
+                        timeout=self._ollama_config.timeout,
+                    )
                 )
             except (_httpx.HTTPError, RuntimeError) as e:
                 raise LLMExtractionError(f"Ollama API error: {e}") from e
@@ -282,7 +295,11 @@ class LLMExtractor:
             )
 
         normalized = self._normalize_keys(parsed)
-        extra = {k: v for k, v in normalized.items() if k not in _CORE_FIELDS and v is not None} or None
+        extra = {
+            k: v
+            for k, v in normalized.items()
+            if k not in _CORE_FIELDS and v is not None
+        } or None
         return ExtractedTitle(
             title_en=normalized.get("title_en"),
             title_ja=normalized.get("title_ja"),

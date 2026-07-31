@@ -1,3 +1,5 @@
+"""Dramatiq worker that executes OCR pipeline runs."""
+
 import asyncio
 import logging
 import threading
@@ -23,7 +25,7 @@ from ocr_manga_title.engine import OCREngine
 from ocr_manga_title.exceptions import PermanentError
 from ocr_manga_title.schemas import ModelConfig as ModelConfigSchema, OCRResult, utcnow
 from ocr_manga_title.services.cache import hash_bytes, hash_config, put_ocr_result
-from ocr_manga_title.services.ocr import build_model_config
+from ocr_manga_title.services.ocr import build_model_config, ocr_result_to_data
 from ocr_manga_title.services.pipeline import save_pipeline_results
 from ocr_manga_title.settings import (
     CONFIG_PATH,
@@ -31,6 +33,7 @@ from ocr_manga_title.settings import (
     DB_WORKER_MAX_OVERFLOW,
     DB_WORKER_POOL_SIZE,
     PREPROCESS_CONFIG_PATH,
+    available_memory_bytes,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,20 +69,9 @@ def _get_worker_session_factory() -> async_sessionmaker[AsyncSession]:
     return _worker_session_factory
 
 
-def _check_available_memory() -> int:
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) // 1024
-    except (FileNotFoundError, ValueError, IndexError):
-        logger.debug("/proc/meminfo unavailable — memory guard disabled")
-    return -1
-
-
 def _require_memory(context: str) -> None:
-    available = _check_available_memory()
-    if available >= 0 and available < MIN_MEMORY_MB:
+    available = available_memory_bytes() // (1024 * 1024)
+    if available > 0 and available < MIN_MEMORY_MB:
         raise PermanentError(
             f"Insufficient memory to {context}: "
             f"{available}MB available, {MIN_MEMORY_MB}MB required. "
@@ -190,8 +182,6 @@ async def _cache_ocr_results(
     image_hash: str,
 ) -> None:
     try:
-        from ocr_manga_title.api.schemas.ocr import OCRResultData, TextBlockData
-
         for ocr_res in ocr_results:
             if ocr_res.error:
                 continue
@@ -202,17 +192,7 @@ async def _cache_ocr_results(
                 session,
                 image_hash,
                 config_hash,
-                OCRResultData(
-                    raw_text=ocr_res.raw_text,
-                    model_name=ocr_res.model_name,
-                    confidence=ocr_res.confidence,
-                    processing_time_ms=ocr_res.processing_time_ms,
-                    error=ocr_res.error,
-                    blocks=[
-                        TextBlockData(bbox=b.bbox, text=b.text, confidence=b.confidence)
-                        for b in ocr_res.blocks
-                    ] if ocr_res.blocks else None,
-                ),
+                ocr_result_to_data(ocr_res),
             )
     except Exception as cache_err:
         logger.warning("Failed to cache OCR results: %s", cache_err)
@@ -228,14 +208,8 @@ async def _mark_run_failed(run_id: str, error_message: str) -> None:
         stmt = select(PipelineRun).where(PipelineRun.id == run_uuid)
         result = await session.execute(stmt)
         run = result.scalar_one_or_none()
-        if not run or run.status in (RunStatus.COMPLETED, RunStatus.FAILED):
-            return
-        run.status = RunStatus.FAILED
-        run.error_message = error_message[:_MAX_ERROR_LENGTH]
-        run.completed_at = utcnow()
-        if run.batch_run_id:
-            await update_batch_progress(session, run.batch_run_id)
-        await session.commit()
+        if run and run.status not in (RunStatus.COMPLETED, RunStatus.FAILED):
+            await _finalize_run(session, run, RunStatus.FAILED, error_message)
 
 
 @dramatiq.actor(

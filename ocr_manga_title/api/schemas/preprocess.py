@@ -31,17 +31,6 @@ class StepDescriptorResponse(BaseModel):
     params: list[ParamDescriptorResponse]
 
 
-class PreviewStepRequest(BaseModel):
-    """Request body for single-step preview.
-
-    Deprecated: kept for backward compat. New code uses multipart form fields.
-    """
-
-    image: str
-    step_name: str
-    params: dict[str, Any] = {}
-
-
 class PreviewStepResponse(BaseModel):
     """Response for single-step preview."""
 
@@ -51,16 +40,6 @@ class PreviewStepResponse(BaseModel):
     processing_time_ms: int = 0
     success: bool = True
     error: str | None = None
-
-
-class PreviewPipelineRequest(BaseModel):
-    """Request body for full pipeline preview.
-
-    Deprecated: kept for backward compat. New code uses multipart form fields.
-    """
-
-    image: str
-    steps: dict[str, dict[str, Any]] = {}
 
 
 class PipelineStepResult(BaseModel):

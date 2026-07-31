@@ -6,6 +6,7 @@ import asyncio
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -16,6 +17,35 @@ _cache: dict[str, Any] = {"models": [], "ts": 0.0, "vision": [], "vision_ts": 0.
 _cache_lock = threading.Lock()
 _CACHE_TTL = 300.0
 _HTTP_TIMEOUT = 30.0
+
+
+@dataclass(frozen=True)
+class ChatCompletionRequest:
+    """Parameters for a single Ollama chat completion call."""
+
+    model: str
+    messages: list[dict[str, Any]]
+    images: list[str] | None = None
+    format: dict[str, Any] | str | None = None
+    temperature: float = 0.1
+    timeout: float | None = None
+
+
+def _build_payload(req: ChatCompletionRequest) -> dict[str, Any]:
+    messages = (
+        _inject_images(req.messages, req.images)
+        if (req.images and req.messages)
+        else req.messages
+    )
+    payload: dict[str, Any] = {
+        "model": req.model,
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": req.temperature},
+    }
+    if req.format is not None:
+        payload["format"] = req.format
+    return payload
 
 
 def is_ollama_configured() -> bool:
@@ -136,47 +166,15 @@ async def list_vision_models() -> list[dict[str, Any]]:
     return vision_models
 
 
-async def chat_completion(
-    model: str,
-    messages: list[dict[str, Any]],
-    *,
-    images: list[str] | None = None,
-    format: dict[str, Any] | str | None = None,
-    temperature: float = 0.1,
-    timeout: float | None = None,
-) -> dict[str, Any]:
-    """POST /api/chat — non-streaming chat completion.
-
-    Args:
-        model: Ollama model name (e.g. "llava", "llama3").
-        messages: List of message dicts with role/content.
-        images: Optional list of base64-encoded images to attach.
-        format: JSON schema or "json" for structured output.
-        temperature: Sampling temperature.
-        timeout: Request timeout in seconds (defaults to OLLAMA_TIMEOUT).
-
-    Returns:
-        Response dict with ``message.content`` and metadata.
-
-    """
+async def chat_completion(req: ChatCompletionRequest) -> dict[str, Any]:
+    """POST /api/chat — non-streaming chat completion."""
     if not is_ollama_configured():
         raise RuntimeError("Ollama is not configured (OLLAMA_BASE_URL is empty)")
 
-    if images and messages:
-        messages = _inject_images(messages, images)
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": temperature},
-    }
-    if format is not None:
-        payload["format"] = format
-
     from ocr_manga_title.settings import OLLAMA_TIMEOUT
 
-    effective_timeout = timeout or OLLAMA_TIMEOUT
+    payload = _build_payload(req)
+    effective_timeout = req.timeout or OLLAMA_TIMEOUT
 
     async with httpx.AsyncClient(timeout=effective_timeout) as client:
         resp = await client.post(
@@ -186,6 +184,30 @@ async def chat_completion(
         )
         resp.raise_for_status()
         return resp.json()  # type: ignore[no-any-return]
+
+
+def map_llm_models(
+    raw_models: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Map raw Ollama model dicts to a standardized LLM model schema."""
+    return [
+        {
+            "name": m.get("name", ""),
+            "size": m.get("size", 0),
+            "modified_at": m.get("modified_at", ""),
+            "parameter_size": m.get("details", {}).get("parameter_size", ""),
+            "quantization": m.get("details", {}).get("quantization", ""),
+        }
+        for m in raw_models
+    ]
+
+
+def map_vision_models(
+    raw_models: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Map raw Ollama model dicts to a standardized vision model schema."""
+    return [{"name": m.get("name", ""), "size": m.get("size", 0)} for m in raw_models]
+
 
 def _inject_images(
     messages: list[dict[str, Any]],
@@ -200,34 +222,15 @@ def _inject_images(
     return out
 
 
-def chat_completion_sync(
-    model: str,
-    messages: list[dict[str, Any]],
-    *,
-    images: list[str] | None = None,
-    format: dict[str, Any] | str | None = None,
-    temperature: float = 0.1,
-    timeout: float | None = None,
-) -> dict[str, Any]:
+def chat_completion_sync(req: ChatCompletionRequest) -> dict[str, Any]:
     """Provide synchronous chat completion via ``httpx.Client``."""
     if not is_ollama_configured():
         raise RuntimeError("Ollama is not configured (OLLAMA_BASE_URL is empty)")
 
-    if images and messages:
-        messages = _inject_images(messages, images)
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": temperature},
-    }
-    if format is not None:
-        payload["format"] = format
-
     from ocr_manga_title.settings import OLLAMA_TIMEOUT
 
-    effective_timeout = timeout or OLLAMA_TIMEOUT
+    payload = _build_payload(req)
+    effective_timeout = req.timeout or OLLAMA_TIMEOUT
 
     with httpx.Client(timeout=effective_timeout) as client:
         resp = client.post(

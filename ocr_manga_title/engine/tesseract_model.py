@@ -1,6 +1,5 @@
 """Adapter wrapping `pytesseract <https://github.com/madmaze/pytesseract>`_ for Tesseract OCR."""
 
-import time
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -20,16 +19,13 @@ class TesseractModel(BaseOCRModel):
     """
 
     def __init__(self, config: ModelConfig):
-        """Initialize the adapter with Tesseract parameters from config.
-
-        Reads ``languages``, ``psm`` (default 3), and ``oem`` (default 3)
-        from ``config.parameters``.
+        """Initialize the Tesseract adapter.
 
         Args:
-            config: Per-model configuration including Tesseract-specific parameters.
+            config: Model configuration including languages, PSM, and OEM modes.
 
         """
-        self._config = config
+        super().__init__(config)
         languages = config.parameters.get("languages", ["eng"])
         if isinstance(languages, list):
             self._lang_string = "+".join(languages)
@@ -37,21 +33,20 @@ class TesseractModel(BaseOCRModel):
             self._lang_string = str(languages)
         self._psm = config.parameters.get("psm", 3)
         self._oem = config.parameters.get("oem", 3)
-        self._detailed = config.parameters.get("detailed", False)
         self._tess_config = f"--psm {self._psm} --oem {self._oem}"
         self._available: bool | None = None
 
     @property
     def name(self) -> str:
-        """Human-readable identifier for this model."""
+        """Machine-readable identifier for this model."""
         return "tesseract"
 
     @property
     def is_available(self) -> bool:
-        """Check whether the ``pytesseract`` package and Tesseract binary are accessible."""
+        """Whether this model's runtime dependencies are installed."""
         if self._available is None:
             try:
-                import pytesseract
+                import pytesseract  # type: ignore[import-untyped]
 
                 pytesseract.get_tesseract_version()
                 self._available = True
@@ -59,25 +54,7 @@ class TesseractModel(BaseOCRModel):
                 self._available = False
         return self._available
 
-    def run(self, image_path: str) -> OCRResult:
-        """Run Tesseract OCR on the given image.
-
-        Uses ``image_to_data`` for both text extraction and confidence scoring
-        in a single pass, filtering out entries below confidence 30.
-
-        Args:
-            image_path: Path to the image file.
-
-        Returns:
-            :class:`~ocr_manga_title.schemas.OCRResult` with extracted text and
-            averaged confidence.  On unreadable images or runtime errors,
-            returns a result with ``confidence=0.0`` and the error message.
-
-        Raises:
-            FileNotFoundError: If the image does not exist.
-            ModelNotAvailableError: If Tesseract is not installed.
-
-        """
+    def _do_run(self, image_path: str) -> OCRResult:
         import pytesseract
         from pytesseract import Output
 
@@ -95,7 +72,6 @@ class TesseractModel(BaseOCRModel):
         except UnidentifiedImageError as e:
             return self._make_error_result(str(e))
 
-        start = time.monotonic()
         try:
             data = pytesseract.image_to_data(
                 image,
@@ -103,7 +79,6 @@ class TesseractModel(BaseOCRModel):
                 config=self._tess_config,
                 output_type=Output.DICT,
             )
-            elapsed_ms = int((time.monotonic() - start) * 1000)
 
             texts = []
             confs = []
@@ -139,11 +114,10 @@ class TesseractModel(BaseOCRModel):
                 raw_text=raw_text.strip(),
                 model_name=self.name,
                 confidence=confidence,
-                processing_time_ms=elapsed_ms,
+                processing_time_ms=0,
                 blocks=blocks if self._detailed else None,
             )
         except FileNotFoundError:
-            elapsed_ms = int((time.monotonic() - start) * 1000)
             try:
                 raw_text = pytesseract.image_to_string(
                     image,
@@ -154,13 +128,11 @@ class TesseractModel(BaseOCRModel):
                     raw_text=raw_text,
                     model_name=self.name,
                     confidence=0.0,
-                    processing_time_ms=elapsed_ms,
+                    processing_time_ms=0,
                 )
             except Exception as fallback_err:
-                return self._make_error_result(
-                    f"image_to_data TSV missing, fallback failed: {fallback_err}",
-                    elapsed_ms,
-                )
+                raise RuntimeError(
+                    f"image_to_data TSV missing, fallback failed: {fallback_err}"
+                ) from fallback_err
         except pytesseract.TesseractError as e:
-            elapsed_ms = int((time.monotonic() - start) * 1000)
-            return self._make_error_result(str(e), elapsed_ms)
+            return self._make_error_result(str(e))

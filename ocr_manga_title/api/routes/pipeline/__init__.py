@@ -1,3 +1,5 @@
+"""Pipeline execution routes (inputs, runs, batches, results)."""
+
 from ocr_manga_title.api.routes.pipeline import (
     batches,
     inputs,

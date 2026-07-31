@@ -1,10 +1,14 @@
+"""Pydantic schemas for OCR model configuration API requests and responses."""
+
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
 
+from ocr_manga_title.api.schemas._base import ORMSchema
 
-class ModelConfigResponse(BaseModel):
+
+class ModelConfigResponse(ORMSchema):
     """Serialized OCR model configuration returned by the API."""
 
     model_name: str
@@ -12,8 +16,6 @@ class ModelConfigResponse(BaseModel):
     parameters: dict[str, Any] | None = None
     language_hint: str | None = None
     updated_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
 
 
 class ModelConfigUpdateRequest(BaseModel):

@@ -1,4 +1,3 @@
-import pytest
 
 from ocr_manga_title.db.crud import (
     create_batch_run,

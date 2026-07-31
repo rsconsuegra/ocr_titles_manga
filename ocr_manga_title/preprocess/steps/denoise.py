@@ -32,15 +32,7 @@ STRENGTH_PRESETS: dict[str, dict[str, dict[str, float]]] = {
 class DenoiseStep(BasePreProcessor):
     """Reduces image noise using Gaussian, median, or non-local means filtering."""
 
-    @property
-    def name(self) -> str:
-        """Machine-readable identifier for this step."""
-        return "denoise"
-
-    @property
-    def is_available(self) -> bool:
-        """Whether the step's runtime dependencies are installed."""
-        return True
+    step_name = "denoise"
 
     def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Reduce image noise using the configured method and strength."""

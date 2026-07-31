@@ -1,6 +1,19 @@
 """Centralized application settings — single source of truth for env vars and defaults."""
 
 import os
+from pathlib import Path
+
+
+def available_memory_bytes() -> int:
+    """Return available RAM in bytes from ``/proc/meminfo``, or ``0`` if unavailable."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        pass
+    return 0
 
 # --- Database ---
 DATABASE_URL: str = os.getenv(
@@ -27,7 +40,7 @@ OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
 # --- Ollama ---
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "")
 OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "ollama")
-OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "300"))
 OLLAMA_DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3")
 
 # --- Worker ---
@@ -74,3 +87,8 @@ CORS_ORIGINS: tuple[str, ...] = tuple(
 
 # --- Encryption ---
 SERVER_SECRET: str = os.getenv("SERVER_SECRET", "")
+
+# --- Prompts ---
+DEFAULT_LLM_PROMPT_PATH: Path = (
+    Path(__file__).resolve().parent / "prompts" / "llm" / "extract_title_v1.md"
+)

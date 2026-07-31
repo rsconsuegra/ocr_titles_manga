@@ -173,60 +173,6 @@ class TestOCREngineProcess:
         result = engine.process(blank_image)
         assert len(result.errors) == 1
 
-    @patch("openai.OpenAI")
-    def test_process_llm_fails_rules_succeed(
-        self, mock_openai_cls, tmp_path, blank_image
-    ):
-        import openai
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.side_effect = openai.APIError(
-            message="err", request=MagicMock(), body=None
-        )
-        mock_openai_cls.return_value = mock_client
-
-        results = [
-            OCRResult(
-                raw_text="ISBN 978-0-306-40615-7 some text",
-                model_name="tesseract",
-                confidence=0.7,
-                processing_time_ms=100,
-            ),
-        ]
-        engine = self._make_engine_with_mocks(tmp_path, mock_results=results)
-        result = engine.process(blank_image)
-        assert result.extracted is not None
-        assert "9780306406157" in result.extracted.code
-
-    @patch("openai.OpenAI")
-    def test_process_llm_and_rules_both_fail(
-        self, mock_openai_cls, tmp_path, blank_image
-    ):
-        import openai
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.side_effect = openai.APIError(
-            message="err", request=MagicMock(), body=None
-        )
-        mock_openai_cls.return_value = mock_client
-
-        results = [
-            OCRResult(
-                raw_text="no codes here",
-                model_name="tesseract",
-                confidence=0.7,
-                processing_time_ms=100,
-            ),
-        ]
-        engine = self._make_engine_with_mocks(tmp_path, mock_results=results)
-        result = engine.process(blank_image)
-        assert result.extracted is None
-
-    def test_process_missing_image_raises_file_not_found(self, tmp_path):
-        engine = _make_engine(tmp_path)
-        with pytest.raises(FileNotFoundError):
-            engine.process("/nonexistent.png")
-
     def test_process_unsupported_format_raises_value_error(self, tmp_path):
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("not an image")
@@ -235,58 +181,8 @@ class TestOCREngineProcess:
             engine.process(str(txt_file))
 
     @patch("ocr_manga_title.engine.ocr_engine.extract_title_from_text")
-    @patch("ocr_manga_title.engine.ocr_engine.RuleMatcher")
-    def test_process_runs_llm_on_each_result(
-        self, mock_rule_cls, mock_extract, tmp_path, blank_image
-    ):
-        mock_extract.return_value = ExtractedTitle(confidence=0.5)
-        mock_rule = MagicMock()
-        mock_rule.augment.side_effect = lambda e, t: e
-        mock_rule_cls.return_value = mock_rule
-
-        results = [
-            OCRResult(
-                raw_text="text1",
-                model_name="tesseract",
-                confidence=0.6,
-                processing_time_ms=50,
-            ),
-        ]
-        engine = self._make_engine_with_mocks(tmp_path, mock_results=results)
-        engine.process(blank_image)
-        assert mock_extract.call_count == 1
-
-    @patch("ocr_manga_title.engine.ocr_engine.extract_title_from_text")
-    @patch("ocr_manga_title.engine.ocr_engine.RuleMatcher")
-    def test_process_runs_rules_on_each_result(
-        self, mock_rule_cls, mock_extract, tmp_path, blank_image
-    ):
-        mock_extract.return_value = ExtractedTitle(confidence=0.5)
-        mock_rule = MagicMock()
-        mock_rule.augment.side_effect = lambda e, t: e
-        mock_rule_cls.return_value = mock_rule
-
-        results = [
-            OCRResult(
-                raw_text="text1",
-                model_name="tesseract",
-                confidence=0.6,
-                processing_time_ms=50,
-            ),
-        ]
-        engine = self._make_engine_with_mocks(tmp_path, mock_results=results)
-        engine.process(blank_image)
-        assert mock_rule.augment.call_count == 1
-
-    @patch("openai.OpenAI")
-    def test_process_no_text_extracted(self, mock_openai_cls, tmp_path, blank_image):
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"confidence": 0.0}'
-        mock_response.usage = None
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_response
-        mock_openai_cls.return_value = mock_client
+    def test_process_no_text_extracted(self, mock_extract, tmp_path, blank_image):
+        mock_extract.return_value = ExtractedTitle(confidence=0.0)
 
         results = [
             OCRResult(

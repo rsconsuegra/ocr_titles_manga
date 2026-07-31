@@ -1,3 +1,5 @@
+"""Dramatiq Redis broker configuration."""
+
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 

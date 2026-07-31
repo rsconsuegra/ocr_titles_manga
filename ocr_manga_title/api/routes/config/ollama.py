@@ -16,6 +16,8 @@ from ocr_manga_title.services.ollama import (
     is_ollama_configured,
     list_models,
     list_vision_models,
+    map_llm_models,
+    map_vision_models,
 )
 
 router = APIRouter()
@@ -36,23 +38,11 @@ async def get_ollama_status() -> OllamaStatusResponse:
 async def get_vision_models() -> list[OllamaVisionModelResponse]:
     """List Ollama models that have vision capability."""
     models = await list_vision_models()
-    return [
-        OllamaVisionModelResponse(name=m.get("name", ""), size=m.get("size", 0))
-        for m in models
-    ]
+    return [OllamaVisionModelResponse(**m) for m in map_vision_models(models)]
 
 
 @router.get("/llm-models", response_model=list[OllamaLLMModelResponse])
 async def get_llm_models() -> list[OllamaLLMModelResponse]:
     """List all available Ollama models (usable for LLM extraction)."""
     models = await list_models()
-    return [
-        OllamaLLMModelResponse(
-            name=m.get("name", ""),
-            size=m.get("size", 0),
-            modified_at=m.get("modified_at", ""),
-            parameter_size=m.get("details", {}).get("parameter_size", ""),
-            quantization=m.get("details", {}).get("quantization", ""),
-        )
-        for m in models
-    ]
+    return [OllamaLLMModelResponse(**m) for m in map_llm_models(models)]

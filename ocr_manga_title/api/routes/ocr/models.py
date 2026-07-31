@@ -1,3 +1,5 @@
+"""OCR model configuration endpoints - list and upsert per-model settings."""
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status

@@ -1,7 +1,5 @@
-import io
 import uuid
 
-import pytest
 
 
 async def test_create_batch(client, blank_image):

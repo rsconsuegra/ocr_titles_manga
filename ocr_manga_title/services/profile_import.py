@@ -1,10 +1,13 @@
+"""Profile validation and import conflict resolution."""
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ocr_manga_title.engine.registry import MODEL_REGISTRY
-from ocr_manga_title.preprocess.registry import STEP_REGISTRY
+from ocr_manga_title.preprocess.registry import STEP_REGISTRY, ParamDescriptor
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,13 +40,20 @@ def validate_profile_data(profile_data: dict[str, Any]) -> ProfileValidationResu
 
     name = profile_data.get("name", "").strip()
     if not name:
-        result.errors.append(ValidationMessage(field="name", message="Profile name is required"))
+        result.errors.append(
+            ValidationMessage(field="name", message="Profile name is required")
+        )
 
-    pp_steps = profile_data.get("preprocess_steps") or {}
-    _validate_step_configs(pp_steps, "preprocess_steps", result)
-
-    ocr_models = profile_data.get("ocr_models") or {}
-    _validate_model_configs(ocr_models, "ocr_models", result)
+    _validate_step_configs(
+        profile_data.get("preprocess_steps") or {},
+        "preprocess_steps",
+        result,
+    )
+    _validate_model_configs(
+        profile_data.get("ocr_models") or {},
+        "ocr_models",
+        result,
+    )
 
     llm_provider = profile_data.get("llm_provider", "openrouter")
     if llm_provider not in ("openrouter", "ollama"):
@@ -56,65 +66,101 @@ def validate_profile_data(profile_data: dict[str, Any]) -> ProfileValidationResu
 
     llm_config = profile_data.get("llm_config")
     if llm_config is not None:
-        if not isinstance(llm_config, dict):
-            result.errors.append(
-                ValidationMessage(field="llm_config", message="llm_config must be a dict")
-            )
-        else:
-            temp = llm_config.get("temperature")
-            if temp is not None:
-                try:
-                    t = float(temp)
-                    if not (0.0 <= t <= 2.0):
-                        result.errors.append(
-                            ValidationMessage(
-                                field="llm_config.temperature",
-                                message=f"Temperature {t} out of range [0.0, 2.0]",
-                            )
-                        )
-                except (TypeError, ValueError):
-                    result.errors.append(
-                        ValidationMessage(
-                            field="llm_config.temperature",
-                            message="Temperature must be a number",
-                        )
-                    )
-            max_chars = llm_config.get("max_ocr_chars")
-            if max_chars is not None:
-                try:
-                    v = int(max_chars)
-                    if v < 0:
-                        result.errors.append(
-                            ValidationMessage(
-                                field="llm_config.max_ocr_chars",
-                                message="max_ocr_chars must be >= 0",
-                            )
-                        )
-                except (TypeError, ValueError):
-                    result.errors.append(
-                        ValidationMessage(
-                            field="llm_config.max_ocr_chars",
-                            message="max_ocr_chars must be an integer",
-                        )
-                    )
-            llm_model = llm_config.get("llm_model")
-            if llm_model is not None and not isinstance(llm_model, str):
-                result.errors.append(
-                    ValidationMessage(
-                        field="llm_config.llm_model",
-                        message="llm_model must be a string",
-                    )
-                )
-            reasoning_enabled = llm_config.get("reasoning_enabled")
-            if reasoning_enabled is not None and not isinstance(reasoning_enabled, bool):
-                result.errors.append(
-                    ValidationMessage(
-                        field="llm_config.reasoning_enabled",
-                        message="reasoning_enabled must be a boolean",
-                    )
-                )
+        _validate_llm_config(llm_config, result)
 
     return result
+
+
+def _validate_llm_config(llm_config: Any, result: ProfileValidationResult) -> None:
+    if not isinstance(llm_config, dict):
+        result.errors.append(
+            ValidationMessage(field="llm_config", message="llm_config must be a dict")
+        )
+        return
+
+    _validate_numeric_field(
+        llm_config,
+        "temperature",
+        result,
+        coerce=float,
+        min_val=0.0,
+        max_val=2.0,
+        type_error="Temperature must be a number",
+    )
+    _validate_numeric_field(
+        llm_config,
+        "max_ocr_chars",
+        result,
+        coerce=int,
+        min_val=0,
+        max_val=None,
+        type_error="max_ocr_chars must be an integer",
+    )
+    _validate_type_field(
+        llm_config,
+        "llm_model",
+        str,
+        result,
+        type_error="llm_model must be a string",
+    )
+    _validate_type_field(
+        llm_config,
+        "reasoning_enabled",
+        bool,
+        result,
+        type_error="reasoning_enabled must be a boolean",
+    )
+
+
+def _validate_numeric_field(
+    config: dict[str, Any],
+    key: str,
+    result: ProfileValidationResult,
+    *,
+    coerce: type,
+    min_val: float | None,
+    max_val: float | None,
+    type_error: str,
+) -> None:
+    raw = config.get(key)
+    if raw is None:
+        return
+    try:
+        v = coerce(raw)
+    except (TypeError, ValueError):
+        result.errors.append(
+            ValidationMessage(field=f"llm_config.{key}", message=type_error)
+        )
+        return
+    if min_val is not None and v < min_val:
+        result.errors.append(
+            ValidationMessage(
+                field=f"llm_config.{key}",
+                message=f"{key} {v} is below minimum {min_val}",
+            )
+        )
+    if max_val is not None and v > max_val:
+        result.errors.append(
+            ValidationMessage(
+                field=f"llm_config.{key}",
+                message=f"{key} {v} is above maximum {max_val}",
+            )
+        )
+
+
+def _validate_type_field(
+    config: dict[str, Any],
+    key: str,
+    expected: type,
+    result: ProfileValidationResult,
+    *,
+    type_error: str,
+) -> None:
+    raw = config.get(key)
+    if raw is not None and not isinstance(raw, expected):
+        result.errors.append(
+            ValidationMessage(field=f"llm_config.{key}", message=type_error)
+        )
 
 
 def _validate_step_configs(
@@ -140,7 +186,9 @@ def _validate_step_configs(
             )
             continue
 
-        _validate_params(step_config, descriptor.params, f"{path_prefix}.{step_name}", result)
+        _validate_params(
+            step_config, descriptor.params, f"{path_prefix}.{step_name}", result
+        )
 
 
 def _validate_model_configs(
@@ -166,7 +214,79 @@ def _validate_model_configs(
             )
             continue
 
-        _validate_params(model_config, descriptor.params, f"{path_prefix}.{model_name}", result)
+        _validate_params(
+            model_config, descriptor.params, f"{path_prefix}.{model_name}", result
+        )
+
+
+def _validate_select(
+    desc: ParamDescriptor,
+    value: Any,
+    field_path: str,
+    result: ProfileValidationResult,
+) -> None:
+    options = desc.options
+    if options is None:
+        return
+    if desc.type == "multiselect" and isinstance(value, list):
+        for v in value:
+            if v not in options:
+                result.errors.append(
+                    ValidationMessage(
+                        field=field_path,
+                        message=f"Value '{v}' not in allowed options: {options}",
+                    )
+                )
+        return
+    if isinstance(value, str) and value not in options:
+        result.errors.append(
+            ValidationMessage(
+                field=field_path,
+                message=f"Value '{value}' not in allowed options: {options}",
+            )
+        )
+
+
+def _validate_number(
+    desc: ParamDescriptor,
+    value: Any,
+    field_path: str,
+    result: ProfileValidationResult,
+) -> None:
+    if not isinstance(value, (int, float)):
+        return
+    if desc.min is not None and value < desc.min:
+        result.errors.append(
+            ValidationMessage(
+                field=field_path,
+                message=f"Value {value} below minimum {desc.min}",
+            )
+        )
+    if desc.max is not None and value > desc.max:
+        result.errors.append(
+            ValidationMessage(
+                field=field_path,
+                message=f"Value {value} above maximum {desc.max}",
+            )
+        )
+
+
+_TypeValidator = Callable[[ParamDescriptor, Any, str, ProfileValidationResult], None]
+
+_TYPE_VALIDATORS: dict[str, _TypeValidator] = {}
+
+
+def _register(*types: str) -> Callable[[_TypeValidator], _TypeValidator]:
+    def decorator(fn: _TypeValidator) -> _TypeValidator:
+        for t in types:
+            _TYPE_VALIDATORS[t] = fn
+        return fn
+
+    return decorator
+
+
+_register("select", "multiselect")(_validate_select)
+_register("number")(_validate_number)
 
 
 def _validate_params(
@@ -191,47 +311,9 @@ def _validate_params(
             )
             continue
 
-        if desc.options is not None and desc.type in ("select", "multiselect"):
-            if desc.type == "multiselect":
-                if isinstance(value, list):
-                    for v in value:
-                        if v not in desc.options:
-                            result.errors.append(
-                                ValidationMessage(
-                                    field=f"{path}.{key}",
-                                    message=f"Value '{v}' not in allowed options: {desc.options}",
-                                )
-                            )
-                elif isinstance(value, str) and value not in desc.options:
-                    result.errors.append(
-                        ValidationMessage(
-                            field=f"{path}.{key}",
-                            message=f"Value '{value}' not in allowed options: {desc.options}",
-                        )
-                    )
-            elif isinstance(value, str) and value not in desc.options:
-                result.errors.append(
-                    ValidationMessage(
-                        field=f"{path}.{key}",
-                        message=f"Value '{value}' not in allowed options: {desc.options}",
-                    )
-                )
-
-        if desc.type == "number" and isinstance(value, (int, float)):
-            if desc.min is not None and value < desc.min:
-                result.errors.append(
-                    ValidationMessage(
-                        field=f"{path}.{key}",
-                        message=f"Value {value} below minimum {desc.min}",
-                    )
-                )
-            if desc.max is not None and value > desc.max:
-                result.errors.append(
-                    ValidationMessage(
-                        field=f"{path}.{key}",
-                        message=f"Value {value} above maximum {desc.max}",
-                    )
-                )
+        validator = _TYPE_VALIDATORS.get(desc.type)
+        if validator is not None:
+            validator(desc, value, f"{path}.{key}", result)
 
 
 async def resolve_name_conflict(session: AsyncSession, name: str) -> str:

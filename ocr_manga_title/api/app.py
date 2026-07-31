@@ -1,7 +1,9 @@
+"""FastAPI application factory with middleware, error handlers, and router registration."""
+
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -68,7 +70,7 @@ def _run_warmup() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Manage startup/shutdown lifecycle: warmup, secret check, cache sweeper."""
     from ocr_manga_title.settings import SERVER_SECRET
 

@@ -32,18 +32,6 @@ class ModelDescriptorResponse(BaseModel):
     enabled: bool = False
 
 
-class OCRRunRequest(BaseModel):
-    """Request body for running a single OCR model.
-
-    Deprecated: kept for backward compat. New code uses multipart form fields.
-    """
-
-    image: str
-    model_name: str
-    params: dict[str, Any] = {}
-    enable_llm: bool = False
-
-
 class TextBlockData(BaseModel):
     """A single detected text region with bounding box."""
 
@@ -73,6 +61,7 @@ class LLMResultData(BaseModel):
     source_method: str = "llm"
     raw_response: str | None = None
     extra_metadata: dict[str, Any] | None = None
+    error: str | None = None
 
 
 class OCRRunResponse(BaseModel):
@@ -86,19 +75,6 @@ class OCRExportRequest(BaseModel):
     """Request body for exporting OCR config as YAML."""
 
     models: dict[str, dict[str, Any]] = {}
-
-
-class QuickRunRequest(BaseModel):
-    """Request body for the stateless quick-run pipeline.
-
-    Deprecated: kept for backward compat. New code uses multipart form fields.
-    """
-
-    image: str
-    preprocess_steps: dict[str, dict[str, Any]] = {}
-    ocr_models: dict[str, dict[str, Any]] = {}
-    enable_llm: bool = False
-    profile_id: str | None = None
 
 
 class QuickRunResponse(BaseModel):

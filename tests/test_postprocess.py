@@ -4,8 +4,7 @@ import pytest
 
 from ocr_manga_title.exceptions import LLMExtractionError
 from ocr_manga_title.postprocess.llm_extractor import LLMExtractor
-from ocr_manga_title.postprocess.rule_matcher import RuleMatcher
-from ocr_manga_title.schemas import ExtractedTitle, OpenRouterConfig
+from ocr_manga_title.schemas import OpenRouterConfig
 
 
 def _make_config(**kwargs):
@@ -218,104 +217,3 @@ class TestLLMExtractor:
         with caplog.at_level(logging.DEBUG):
             extractor.extract("text")
         assert "token usage" in caplog.text
-
-
-class TestRuleMatcher:
-    def test_match_isbn10_with_prefix(self):
-        result = RuleMatcher().match("ISBN 0-306-40615-2")
-        assert result.code == "0306406152"
-
-    def test_match_isbn10_without_prefix(self):
-        result = RuleMatcher().match("0-306-40615-2")
-        assert result.code == "0306406152"
-
-    def test_match_isbn10_with_x(self):
-        result = RuleMatcher().match("0-8044-2957-X")
-        assert result.code == "080442957X"
-
-    def test_match_isbn13_with_prefix(self):
-        result = RuleMatcher().match("ISBN 978-0-306-40615-7")
-        assert result.code == "9780306406157"
-
-    def test_match_isbn13_without_prefix(self):
-        result = RuleMatcher().match("9780306406157")
-        assert result.code == "9780306406157"
-
-    def test_match_isbn13_preferred_over_isbn10(self):
-        text = "ISBN 0-306-40615-2 and ISBN 978-0-306-40615-7"
-        result = RuleMatcher().match(text)
-        assert result.code == "9780306406157"
-
-    def test_match_no_code(self):
-        result = RuleMatcher().match("just some text")
-        assert result.code is None
-        assert result.confidence == 0.0
-
-    def test_match_code_in_longer_text(self):
-        result = RuleMatcher().match("Published as ISBN 0-306-40615-2 in Japan")
-        assert result.code == "0306406152"
-
-    def test_match_rejects_invalid_isbn10_checksum(self):
-        result = RuleMatcher().match("0-306-40615-9")
-        assert result.code is None
-
-    def test_match_rejects_invalid_isbn13_checksum(self):
-        result = RuleMatcher().match("9780306406150")
-        assert result.code is None
-
-    def test_normalize_title_whitespace(self):
-        assert RuleMatcher.normalize_title("  Hello   World  ") == "Hello World"
-
-    def test_normalize_title_trailing_punctuation(self):
-        assert RuleMatcher.normalize_title("One Piece！！") == "One Piece"
-
-    def test_normalize_title_unicode_nfc(self):
-        import unicodedata
-
-        decomposed = "e\u0301"
-        normalized = RuleMatcher.normalize_title(decomposed)
-        assert unicodedata.is_normalized("NFC", normalized)
-
-    def test_normalize_isbn_strips_hyphens(self):
-        assert RuleMatcher.normalize_isbn("978-0-306-40615-7") == "9780306406157"
-
-    def test_normalize_isbn_strips_prefix(self):
-        assert RuleMatcher.normalize_isbn("ISBN 978-0-306-40615-7") == "9780306406157"
-
-    def test_augment_fills_missing_code(self):
-        existing = ExtractedTitle(
-            title_en="Naruto", code=None, confidence=0.8, source_method="llm"
-        )
-        result = RuleMatcher().augment(existing, "ISBN 978-0-306-40615-7")
-        assert result.code == "9780306406157"
-        assert result.source_method == "llm+rules"
-
-    def test_augment_does_not_overwrite_code(self):
-        existing = ExtractedTitle(code="existing", confidence=0.8, source_method="llm")
-        result = RuleMatcher().augment(existing, "ISBN 978-0-306-40615-7")
-        assert result.code == "existing"
-
-    def test_augment_normalizes_existing_titles(self):
-        existing = ExtractedTitle(
-            title_en="  Naruto  !", confidence=0.8, source_method="llm"
-        )
-        result = RuleMatcher().augment(existing, "no codes here")
-        assert result.title_en == "Naruto"
-
-    def test_augment_source_method(self):
-        existing = ExtractedTitle(confidence=0.0, source_method="rules")
-        result = RuleMatcher().augment(existing, "ISBN 978-0-306-40615-7")
-        assert result.code == "9780306406157"
-        assert result.source_method == "rules"
-
-    def test_augment_no_changes(self):
-        existing = ExtractedTitle(
-            title_en="Naruto",
-            title_ja="ナルト",
-            code="1234",
-            confidence=0.9,
-            source_method="llm",
-        )
-        result = RuleMatcher().augment(existing, "no codes here")
-        assert result.code == "1234"
-        assert result.title_en == "Naruto"

@@ -1,4 +1,5 @@
-import json
+"""Pipeline profile CRUD endpoints - create, list, update, delete, import, export."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
+from ocr_manga_title.api.routes._helpers import get_profile_or_404
 from ocr_manga_title.api.schemas.pipeline import PaginatedResponse
 from ocr_manga_title.api.schemas.profiles import (
     ProfileCreateRequest,
@@ -20,7 +22,6 @@ from ocr_manga_title.db.crud import (
     count_profiles,
     create_profile,
     delete_profile,
-    get_profile,
     list_profiles,
     update_profile,
 )
@@ -152,9 +153,7 @@ async def get_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
 ) -> ProfileResponse:
     """Retrieve a single profile by ID."""
-    profile = await get_profile(db, profile_id)
-    if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    profile = await get_profile_or_404(db, profile_id)
     return ProfileResponse.model_validate(profile)
 
 
@@ -168,7 +167,9 @@ async def update_profile_endpoint(
     kwargs = body.model_dump(exclude_none=True)
     profile = await update_profile(db, profile_id, **kwargs)
     if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+        )
     return ProfileResponse.model_validate(profile)
 
 
@@ -179,7 +180,9 @@ async def delete_profile_endpoint(
     """Delete a profile by ID."""
     deleted = await delete_profile(db, profile_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+        )
 
 
 @router.post("/{profile_id}/set-default", response_model=ProfileResponse)
@@ -189,7 +192,9 @@ async def set_default_profile_endpoint(
     """Set a profile as the default."""
     profile = await update_profile(db, profile_id, is_default=True)
     if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+        )
     return ProfileResponse.model_validate(profile)
 
 
@@ -198,9 +203,7 @@ async def export_profile_endpoint(
     profile_id: uuid.UUID, db: AsyncSession = Depends(get_db)
 ) -> JSONResponse:
     """Export a profile as a downloadable JSON file."""
-    profile = await get_profile(db, profile_id)
-    if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    profile = await get_profile_or_404(db, profile_id)
 
     export = ProfileExportFile(
         exported_at=utcnow(),
@@ -217,10 +220,9 @@ async def export_profile_endpoint(
     )
 
     filename = f"{profile.name.replace(' ', '_').lower()}_profile.json"
-    content = export.model_dump_json(indent=2)
 
     return JSONResponse(
-        content=json.loads(content),
+        content=export.model_dump(),
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
         },

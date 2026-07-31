@@ -80,14 +80,10 @@ class LLMPromptConfig(BaseModel):
             return None
         system_prompt = llm_config.get("system_prompt", "")
         if not system_prompt:
-            from pathlib import Path
+            from ocr_manga_title.settings import DEFAULT_LLM_PROMPT_PATH
 
-            prompt_path = (
-                Path(__file__).resolve().parent.parent
-                / "prompts" / "llm" / "extract_title_v1.md"
-            )
             try:
-                system_prompt = prompt_path.read_text().strip()
+                system_prompt = DEFAULT_LLM_PROMPT_PATH.read_text().strip()
             except FileNotFoundError:
                 system_prompt = ""
         return cls(

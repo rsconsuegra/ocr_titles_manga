@@ -1,12 +1,13 @@
+"""Pydantic schemas for batch run API responses."""
+
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
-
+from ocr_manga_title.api.schemas._base import ORMSchema
 from ocr_manga_title.api.schemas.pipeline import PipelineRunResponse
 
 
-class BatchRunResponse(BaseModel):
+class BatchRunResponse(ORMSchema):
     """Summary schema for a batch run."""
 
     id: uuid.UUID
@@ -17,8 +18,6 @@ class BatchRunResponse(BaseModel):
     failed_count: int = 0
     created_at: datetime
     completed_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
 
 
 class BatchRunDetailResponse(BatchRunResponse):

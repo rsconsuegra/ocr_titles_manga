@@ -1,3 +1,5 @@
+"""Batch run endpoints - create, trigger, list, and inspect batch runs."""
+
 import uuid
 from typing import Any
 

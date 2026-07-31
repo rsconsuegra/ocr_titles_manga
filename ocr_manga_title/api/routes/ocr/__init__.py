@@ -1,3 +1,5 @@
+"""OCR playground and model management routes."""
+
 from ocr_manga_title.api.routes.ocr import (
     models as models_route,
     ocr,

@@ -11,15 +11,7 @@ from ocr_manga_title.preprocess.base import BasePreProcessor
 class GrayscaleStep(BasePreProcessor):
     """Converts BGR/BGRA images to single-channel grayscale."""
 
-    @property
-    def name(self) -> str:
-        """Machine-readable identifier for this step."""
-        return "grayscale"
-
-    @property
-    def is_available(self) -> bool:
-        """Whether the step's runtime dependencies are installed."""
-        return True
+    step_name = "grayscale"
 
     def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Convert an image to single-channel grayscale."""

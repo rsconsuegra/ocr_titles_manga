@@ -1,9 +1,9 @@
 """Canonical status enums for pipeline runs, batch runs, and catalog entries."""
 
-import enum
+from enum import StrEnum
 
 
-class RunStatus(enum.StrEnum):
+class RunStatus(StrEnum):
     """Status values for pipeline runs."""
 
     PENDING = "pending"
@@ -13,7 +13,7 @@ class RunStatus(enum.StrEnum):
     CANCELLED = "cancelled"
 
 
-class BatchStatus(enum.StrEnum):
+class BatchStatus(StrEnum):
     """Status values for batch runs."""
 
     PENDING = "pending"
@@ -23,7 +23,7 @@ class BatchStatus(enum.StrEnum):
     PARTIAL_FAILURE = "partial_failure"
 
 
-class CatalogStatus(enum.StrEnum):
+class CatalogStatus(StrEnum):
     """Status values for catalog entries."""
 
     AUTO_CONFIRMED = "auto_confirmed"

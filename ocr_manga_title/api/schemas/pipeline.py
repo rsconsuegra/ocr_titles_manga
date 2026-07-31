@@ -1,13 +1,16 @@
+"""Pydantic schemas for pipeline run API requests and responses."""
+
 import uuid
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
 
+from ocr_manga_title.api.schemas._base import ORMSchema
 from ocr_manga_title.api.schemas.results import PostProcessingResultResponse
 
 
-class PipelineRunResponse(BaseModel):
+class PipelineRunResponse(ORMSchema):
     """Serialized pipeline run returned by the API."""
 
     id: uuid.UUID
@@ -17,10 +20,8 @@ class PipelineRunResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
 
-    model_config = {"from_attributes": True}
 
-
-class OCRResultResponse(BaseModel):
+class OCRResultResponse(ORMSchema):
     """Serialized OCR result returned by the API."""
 
     id: uuid.UUID
@@ -31,8 +32,6 @@ class OCRResultResponse(BaseModel):
     error: str | None = None
     blocks: list[dict[str, Any]] | None = None
     created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class OCRResultDetailResponse(OCRResultResponse):
@@ -61,9 +60,3 @@ class PaginatedResponse[T](BaseModel):
     total: int
     limit: int
     offset: int
-
-
-class PipelineTriggerRequest(BaseModel):
-    """Payload for triggering a pipeline run."""
-
-    preprocess_enabled: bool = True

@@ -11,15 +11,7 @@ from ocr_manga_title.preprocess.base import BasePreProcessor
 class BinarizeStep(BasePreProcessor):
     """Converts images to binary (black and white) for improved OCR accuracy."""
 
-    @property
-    def name(self) -> str:
-        """Machine-readable identifier for this step."""
-        return "binarize"
-
-    @property
-    def is_available(self) -> bool:
-        """Whether the step's runtime dependencies are installed."""
-        return True
+    step_name = "binarize"
 
     def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Apply Otsu or adaptive thresholding to produce a binary image."""

@@ -1,10 +1,9 @@
 """Quick run API route — stateless full pipeline execution with image caching."""
 
 import asyncio
-import json
+import copy
 import time
 import uuid
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -12,17 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.routes._helpers import (
+    check_edsr_sync_blocked,
+    get_profile_or_404,
+    parse_json_form,
     parse_llm_form_config,
-    save_uploaded_image,
+    uploaded_image,
 )
 from ocr_manga_title.api.schemas.ocr import QuickRunResponse
-from ocr_manga_title.preprocess.registry import SYNC_BLOCKED_METHODS
+from ocr_manga_title.preprocess.transform import CoordinateTransform
 from ocr_manga_title.services.cache import (
     hash_bytes,
     run_all_models_cached,
     run_preprocessing_cached,
 )
-from ocr_manga_title.services.ocr import pick_best_ocr_data, run_llm_extraction
+from ocr_manga_title.services.ocr import pick_best, run_llm_extraction
 
 router = APIRouter()
 
@@ -65,70 +67,52 @@ async def quick_run(
     db: AsyncSession = Depends(get_db),
 ) -> QuickRunResponse:
     """Execute a stateless full pipeline run on a single image."""
-    try:
-        pp_steps = json.loads(preprocess_steps)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in preprocess_steps",
-        ) from None
-    try:
-        ocr_mods = json.loads(ocr_models)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in ocr_models",
-        ) from None
+    pp_steps = parse_json_form(preprocess_steps, "preprocess_steps")
+    ocr_mods = parse_json_form(ocr_models, "ocr_models")
     effective_llm_provider = llm_provider
     llm_cfg = parse_llm_form_config(
-        llm_system_prompt, llm_user_prompt, llm_temperature, llm_max_ocr_chars, reasoning_enabled
+        llm_system_prompt,
+        llm_user_prompt,
+        llm_temperature,
+        llm_max_ocr_chars,
+        reasoning_enabled,
     )
 
     if profile_id:
-        from ocr_manga_title.db.crud import get_profile
-
         try:
             pid = uuid.UUID(profile_id)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid profile_id"
             ) from None
-        profile = await get_profile(db, pid)
-        if not profile:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+        profile = await get_profile_or_404(db, pid)
+        pp_steps, ocr_mods, enable_llm, effective_llm_provider = (
+            _merge_profile_with_overrides(
+                profile.preprocess_steps,
+                profile.ocr_models,
+                profile.enable_llm,
+                profile.llm_provider,
+                pp_steps,
+                ocr_mods,
+                None,
+                None,
             )
-        pp_steps, ocr_mods, enable_llm, effective_llm_provider = _merge_profile_with_overrides(
-            profile.preprocess_steps,
-            profile.ocr_models,
-            profile.enable_llm,
-            profile.llm_provider,
-            pp_steps,
-            ocr_mods,
-            None,
-            None,
         )
         if not llm_cfg and profile.llm_config:
             llm_cfg = profile.llm_config
 
-    raw, tmp_path = await save_uploaded_image(file)
-    try:
+    async with uploaded_image(file) as (raw, tmp_path):
         image_hash = hash_bytes(raw)
 
         ocr_image_path = tmp_path
         step_metadata = None
         if pp_steps:
             upscale_cfg = pp_steps.get("upscale", {})
-            if isinstance(upscale_cfg, dict) and upscale_cfg.get("method") in SYNC_BLOCKED_METHODS:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "EDSR super-resolution is too slow on CPU for interactive use. "
-                        "Use FSRCNN or cubic for quick runs, or include EDSR in a pipeline profile."
-                    ),
-                )
+            check_edsr_sync_blocked("upscale", upscale_cfg if isinstance(upscale_cfg, dict) else {})
             try:
-                pp_path, step_metadata = await run_preprocessing_cached(db, raw, pp_steps)
+                pp_path, step_metadata = await run_preprocessing_cached(
+                    db, raw, pp_steps
+                )
                 ocr_image_path = pp_path
             except TimeoutError as e:
                 raise HTTPException(
@@ -147,9 +131,6 @@ async def quick_run(
         )
 
         if step_metadata:
-            import copy
-
-            from ocr_manga_title.preprocess.transform import CoordinateTransform
             ocr_results = copy.deepcopy(ocr_results)
             transform = CoordinateTransform.from_pipeline(step_metadata)
             for ocr_result in ocr_results:
@@ -159,7 +140,7 @@ async def quick_run(
 
         llm_data = None
         if enable_llm:
-            best = pick_best_ocr_data(ocr_results)
+            best = pick_best(ocr_results)
             if best:
                 llm_data = await asyncio.to_thread(
                     run_llm_extraction,
@@ -175,5 +156,3 @@ async def quick_run(
             llm=llm_data,
             total_processing_time_ms=total_ms,
         )
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)

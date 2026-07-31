@@ -261,15 +261,32 @@ def _build_ollama_vision(model_cls: type[BaseOCRModel]) -> ModelDescriptor:
 
 def _build_registry() -> dict[str, ModelDescriptor]:
     return {
-        "tesseract": _build_tesseract(_LazyModelClass("ocr_manga_title.engine.tesseract_model.TesseractModel")),  # type: ignore[arg-type]
-        "paddle": _build_paddle(_LazyModelClass("ocr_manga_title.engine.paddle_model.PaddleModel")),  # type: ignore[arg-type]
-        "easyocr": _build_easyocr(_LazyModelClass("ocr_manga_title.engine.easyocr_model.EasyOCRModel")),  # type: ignore[arg-type]
-        "glm_ocr": _build_glm_ocr(_LazyModelClass("ocr_manga_title.engine.glm_ocr_model.GLMOCRModel")),  # type: ignore[arg-type]
-        "ollama_vision": _build_ollama_vision(_LazyModelClass("ocr_manga_title.engine.ollama_vision_model.OllamaVisionModel")),  # type: ignore[arg-type]
+        "tesseract": _build_tesseract(
+            _LazyModelClass("ocr_manga_title.engine.tesseract_model.TesseractModel")  # type: ignore[arg-type]
+        ),
+        "paddle": _build_paddle(
+            _LazyModelClass("ocr_manga_title.engine.paddle_model.PaddleModel")  # type: ignore[arg-type]
+        ),
+        "easyocr": _build_easyocr(
+            _LazyModelClass("ocr_manga_title.engine.easyocr_model.EasyOCRModel")  # type: ignore[arg-type]
+        ),
+        "glm_ocr": _build_glm_ocr(
+            _LazyModelClass("ocr_manga_title.engine.glm_ocr_model.GLMOCRModel")  # type: ignore[arg-type]
+        ),
+        "ollama_vision": _build_ollama_vision(
+            _LazyModelClass(  # type: ignore[arg-type]
+                "ocr_manga_title.engine.ollama_vision_model.OllamaVisionModel"
+            )
+        ),
     }
 
 
 MODEL_REGISTRY: dict[str, ModelDescriptor] = _build_registry()
+
+
+def registry_defaults(descriptor: ModelDescriptor) -> dict[str, Any]:
+    """Return ``{param.name: param.default}`` for every param in *descriptor*."""
+    return {p.name: p.default for p in descriptor.params}
 
 
 def get_model(name: str) -> ModelDescriptor | None:

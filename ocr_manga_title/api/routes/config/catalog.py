@@ -1,3 +1,5 @@
+"""Catalog CRUD endpoints - list, get, update, and export catalog entries."""
+
 import csv
 import io
 import uuid

@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from ocr_manga_title.engine.registry import MODEL_REGISTRY
+from ocr_manga_title.engine.registry import MODEL_REGISTRY, registry_defaults
 from ocr_manga_title.exceptions import ConfigurationError
 from ocr_manga_title.schemas import AppConfig, ModelConfig, PreProcessConfig
 from ocr_manga_title.settings import (
@@ -26,6 +26,62 @@ from ocr_manga_title.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _read_config_file(
+    config_path: str | Path,
+    *,
+    required: bool = True,
+    fmt: str = "yaml",
+) -> dict[str, Any] | None:
+    """Read and parse a configuration file.
+
+    Args:
+        config_path: Path to the config file.
+        required: If ``True``, raises on missing/empty/invalid files.
+                  If ``False``, returns ``None`` instead of raising.
+        fmt: ``"toml"`` or ``"yaml"``.
+
+    Returns:
+        Parsed dict, or ``None`` when *required* is ``False`` and the file
+        is missing, empty, or invalid.
+
+    Raises:
+        ConfigurationError: When *required* is ``True`` and the file cannot
+            be read or parsed.
+
+    """
+    config_path = Path(config_path)
+
+    if not config_path.exists():
+        if required:
+            raise ConfigurationError(
+                f"Configuration file not found: {config_path}",
+                file_path=str(config_path),
+            )
+        return None
+
+    content = config_path.read_text()
+    if not content.strip():
+        if required:
+            raise ConfigurationError(
+                f"Configuration file is empty: {config_path}",
+                file_path=str(config_path),
+            )
+        return None
+
+    try:
+        if fmt == "toml":
+            return tomllib.loads(content)
+        return yaml.safe_load(content)
+    except (tomllib.TOMLDecodeError, yaml.YAMLError) as e:
+        if required:
+            label = "TOML" if fmt == "toml" else "YAML"
+            raise ConfigurationError(
+                f"Invalid {label} syntax: {e}", file_path=str(config_path)
+            ) from e
+        logger.warning("Invalid config in %s: %s", config_path, e)
+        return None
 
 
 @functools.lru_cache(maxsize=1)
@@ -43,24 +99,8 @@ def load_config(config_path: str | Path = CONFIG_PATH) -> AppConfig:
             or fails Pydantic validation.
 
     """
-    config_path = Path(config_path)
-    if not config_path.exists():
-        raise ConfigurationError(
-            f"Configuration file not found: {config_path}", file_path=str(config_path)
-        )
-
-    content = config_path.read_text()
-    if not content.strip():
-        raise ConfigurationError(
-            f"Configuration file is empty: {config_path}", file_path=str(config_path)
-        )
-
-    try:
-        data = tomllib.loads(content)
-    except tomllib.TOMLDecodeError as e:
-        raise ConfigurationError(
-            f"Invalid TOML syntax: {e}", file_path=str(config_path)
-        ) from e
+    data = _read_config_file(config_path, fmt="toml")
+    assert data is not None
 
     if "openrouter" in data and "api_key" not in data.get("openrouter", {}):
         env_key = OPENROUTER_API_KEY
@@ -94,24 +134,7 @@ def load_ocr_config(
             or lacks the required ``models`` key.
 
     """
-    config_path = Path(config_path)
-    if not config_path.exists():
-        raise ConfigurationError(
-            f"Configuration file not found: {config_path}", file_path=str(config_path)
-        )
-
-    content = config_path.read_text()
-    if not content.strip():
-        raise ConfigurationError(
-            f"Configuration file is empty: {config_path}", file_path=str(config_path)
-        )
-
-    try:
-        data = yaml.safe_load(content)
-    except yaml.YAMLError as e:
-        raise ConfigurationError(
-            f"Invalid YAML syntax: {e}", file_path=str(config_path)
-        ) from e
+    data = _read_config_file(config_path, fmt="yaml")
 
     if not isinstance(data, dict) or "models" not in data:
         raise ConfigurationError("Missing 'models' key", file_path=str(config_path))
@@ -144,18 +167,8 @@ def load_preprocess_config(config_path: str | Path = PREPROCESS_CONFIG_PATH) -> 
     """
     disabled = {"preprocessing": {"enabled": False}}
 
-    config_path = Path(config_path)
-    if not config_path.exists():
-        return disabled
-
-    content = config_path.read_text()
-    if not content.strip():
-        return disabled
-
-    try:
-        data = yaml.safe_load(content)
-    except yaml.YAMLError as e:
-        logger.warning("Invalid YAML in %s: %s", config_path, e)
+    data = _read_config_file(config_path, required=False, fmt="yaml")
+    if data is None:
         return disabled
 
     if not isinstance(data, dict) or "preprocessing" not in data:
@@ -181,17 +194,8 @@ def load_openrouter_models(
         ``supports_json_mode`` keys.
 
     """
-    config_path = Path(config_path)
-    if not config_path.exists():
-        return []
-
-    content = config_path.read_text()
-    if not content.strip():
-        return []
-
-    try:
-        data = yaml.safe_load(content)
-    except yaml.YAMLError:
+    data = _read_config_file(config_path, required=False, fmt="yaml")
+    if data is None:
         return []
 
     if not isinstance(data, dict) or "models" not in data:
@@ -241,13 +245,13 @@ def resolve_model_configs(db_overrides: dict[str, dict[str, Any]]) -> dict[str, 
     resolved: dict[str, ResolvedModelConfig] = {}
 
     for name, descriptor in MODEL_REGISTRY.items():
-        registry_defaults = {p.name: p.default for p in descriptor.params}
+        registry_defaults_map = registry_defaults(descriptor)
 
         yaml_cfg = yaml_configs.get(name)
         yaml_enabled = yaml_cfg.enabled if yaml_cfg else True
         yaml_params = yaml_cfg.parameters if yaml_cfg else {}
 
-        merged_params = {**registry_defaults, **yaml_params}
+        merged_params = {**registry_defaults_map, **yaml_params}
 
         db_row = db_overrides.get(name)
         if db_row is not None:
