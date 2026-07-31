@@ -5,27 +5,15 @@ import time
 from typing import Any
 
 from ocr_manga_title.api.schemas.ocr import LLMResultData, OCRResultData, TextBlockData
-from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
+from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model, registry_defaults
 from ocr_manga_title.schemas import ExtractedTitle, OCRResult
 from ocr_manga_title.settings import CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 
 
-def pick_best_ocr(results: list[OCRResult]) -> OCRResult | None:
+def pick_best[T: (OCRResult, OCRResultData)](results: list[T]) -> T | None:
     """Return highest-confidence result with non-empty text and no error."""
-    return next(
-        (
-            r
-            for r in sorted(results, key=lambda r: r.confidence, reverse=True)
-            if r.raw_text.strip() and not r.error
-        ),
-        None,
-    )
-
-
-def pick_best_ocr_data(results: list[OCRResultData]) -> OCRResultData | None:
-    """Return highest-confidence OCRResultData with non-empty text and no error."""
     return next(
         (
             r
@@ -43,6 +31,25 @@ def _parse_languages(languages: str | list[str]) -> list[str]:
     return languages
 
 
+def ocr_result_to_data(ocr_result: OCRResult) -> OCRResultData:
+    """Convert an internal :class:`OCRResult` to the API-layer :class:`OCRResultData`."""
+    return OCRResultData(
+        raw_text=ocr_result.raw_text,
+        model_name=ocr_result.model_name,
+        confidence=ocr_result.confidence,
+        processing_time_ms=ocr_result.processing_time_ms,
+        error=ocr_result.error,
+        blocks=(
+            [
+                TextBlockData(bbox=b.bbox, text=b.text, confidence=b.confidence)
+                for b in ocr_result.blocks
+            ]
+            if ocr_result.blocks
+            else None
+        ),
+    )
+
+
 def build_model_config(
     model_name: str, overrides: dict[str, Any]
 ) -> tuple[Any, Any] | None:
@@ -56,7 +63,7 @@ def build_model_config(
     if descriptor is None:
         return None
 
-    merged_params = {p.name: p.default for p in descriptor.params}
+    merged_params = registry_defaults(descriptor)
     merged_params.update(overrides)
 
     languages = merged_params.pop("languages", "eng")
@@ -100,23 +107,7 @@ def run_single_model(
         ocr_result = instance.run(image_path)
         elapsed_ms = int((time.monotonic() - start) * 1000)
         logger.info("OCR model '%s' finished in %dms", model_name, elapsed_ms)
-        return OCRResultData(
-            raw_text=ocr_result.raw_text,
-            model_name=ocr_result.model_name,
-            confidence=ocr_result.confidence,
-            processing_time_ms=ocr_result.processing_time_ms,
-            error=ocr_result.error,
-            blocks=(
-                [
-                    TextBlockData(
-                        bbox=b.bbox, text=b.text, confidence=b.confidence
-                    )
-                    for b in ocr_result.blocks
-                ]
-                if ocr_result.blocks
-                else None
-            ),
-        )
+        return ocr_result_to_data(ocr_result)
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start) * 1000)
         logger.info("OCR model '%s' failed in %dms: %s", model_name, elapsed_ms, e)
@@ -225,9 +216,9 @@ def run_llm_extraction(
             raw_response=extracted.raw_response,
             extra_metadata=extracted.extra_metadata,
         )
-    except Exception:
+    except Exception as e:
         logger.warning("LLM extraction failed", exc_info=True)
-        return LLMResultData(confidence=0.0, source_method="llm_failed")
+        return LLMResultData(confidence=0.0, source_method="llm_failed", error=str(e))
 
 
 def check_model_availability(model_name: str) -> bool:
@@ -244,11 +235,7 @@ def check_model_availability(model_name: str) -> bool:
             enabled=True,
             parameters={
                 "language": "eng",
-                **(
-                    {p.name: p.default for p in descriptor.params}
-                    if descriptor.params
-                    else {}
-                ),
+                **registry_defaults(descriptor),
             },
         )
         instance = descriptor.model_cls(cfg)

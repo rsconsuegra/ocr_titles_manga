@@ -1,18 +1,12 @@
 """Adapter wrapping any OpenAI-compatible vision API for OCR."""
 
-import logging
-import time
 from pathlib import Path
 
 from openai import OpenAI
 
-from ocr_manga_title.engine.base import BaseOCRModel
+from ocr_manga_title.engine.base import VISION_CONFIDENCE, BaseOCRModel
 from ocr_manga_title.exceptions import ModelNotAvailableError
 from ocr_manga_title.schemas import ModelConfig, OCRResult
-
-logger = logging.getLogger(__name__)
-
-_VISION_CONFIDENCE = 0.8
 
 _MIME_MAP = {
     "png": "image/png",
@@ -33,17 +27,23 @@ class GLMOCRModel(BaseOCRModel):
     """
 
     def __init__(self, config: ModelConfig):
-        self._config = config
+        """Initialize the vision API OCR adapter.
+
+        Args:
+            config: Model configuration including API endpoint and credentials.
+
+        """
+        super().__init__(config)
         self._client: OpenAI | None = None
 
     @property
     def name(self) -> str:
-        """Human-readable identifier for this model."""
+        """Machine-readable identifier for this model."""
         return "glm_ocr"
 
     @property
     def is_available(self) -> bool:
-        """Whether a vision API endpoint is configured."""
+        """Whether this model's runtime dependencies are installed."""
         params = self._config.parameters or {}
         return bool(params.get("api_endpoint"))
 
@@ -58,75 +58,49 @@ class GLMOCRModel(BaseOCRModel):
             )
         return self._client
 
-    def run(self, image_path: str) -> OCRResult:
-        """Run vision API OCR on the given image.
-
-        Sends the image as base64 via the OpenAI chat completions format.
-
-        Args:
-            image_path: Path to the image file.
-
-        Returns:
-            :class:`~ocr_manga_title.schemas.OCRResult` with model response as
-            raw text and confidence 0.8 for non-empty responses.  On errors,
-            returns a result with ``confidence=0.0`` and the error message.
-
-        Raises:
-            ModelNotAvailableError: If no API endpoint is configured.
-            FileNotFoundError: If the image file does not exist.
-
-        """
+    def _do_run(self, image_path: str) -> OCRResult:
         if not self.is_available:
             raise ModelNotAvailableError("Vision API endpoint not configured")
 
         self._validate_image_path(image_path)
 
-        start = time.monotonic()
-        try:
-            client = self._get_client()
-            params = self._config.parameters or {}
+        client = self._get_client()
+        params = self._config.parameters or {}
 
-            path = Path(image_path)
-            ext = path.suffix.lower().lstrip(".")
-            mime = _MIME_MAP.get(ext, "image/png")
-            b64 = self._encode_image(image_path)
+        path = Path(image_path)
+        ext = path.suffix.lower().lstrip(".")
+        mime = _MIME_MAP.get(ext, "image/png")
+        b64 = self._encode_image(image_path)
 
-            response = client.chat.completions.create(
-                model=params.get("model", "google/gemini-2.5-flash"),
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": params.get(
-                                    "prompt",
-                                    "Extract all text from this image.",
-                                ),
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{mime};base64,{b64}"
-                                },
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=params.get("max_tokens", 4096),
-                temperature=params.get("temperature", 0.1),
-            )
+        response = client.chat.completions.create(
+            model=params.get("model", "google/gemini-2.5-flash"),
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": params.get(
+                                "prompt",
+                                "Extract all text from this image.",
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{b64}"},
+                        },
+                    ],
+                }
+            ],
+            max_tokens=params.get("max_tokens", 4096),
+            temperature=params.get("temperature", 0.1),
+        )
 
-            raw_text = response.choices[0].message.content or ""
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+        raw_text = response.choices[0].message.content or ""
 
-            return OCRResult(
-                raw_text=raw_text,
-                model_name=self.name,
-                confidence=_VISION_CONFIDENCE if raw_text else 0.0,
-                processing_time_ms=elapsed_ms,
-            )
-        except Exception as e:
-            elapsed_ms = int((time.monotonic() - start) * 1000)
-            logger.warning("Vision API error for %s: %s", image_path, e)
-            return self._make_error_result(str(e), elapsed_ms)
+        return OCRResult(
+            raw_text=raw_text,
+            model_name=self.name,
+            confidence=VISION_CONFIDENCE if raw_text else 0.0,
+            processing_time_ms=0,
+        )

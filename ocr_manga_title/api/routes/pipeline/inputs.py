@@ -1,16 +1,19 @@
+"""Image upload and pipeline run creation endpoints."""
+
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.routes._helpers import (
+    get_pipeline_run_or_404,
     resolve_profile_snapshot,
     validate_and_save_file,
     validate_file_count,
 )
 from ocr_manga_title.api.schemas.pipeline import PipelineRunResponse
-from ocr_manga_title.db.crud import create_pipeline_run, get_pipeline_run
+from ocr_manga_title.db.crud import create_pipeline_run
 
 router = APIRouter()
 
@@ -44,9 +47,5 @@ async def upload_images(
 @router.get("/{run_id}", response_model=PipelineRunResponse)
 async def get_input(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> PipelineRunResponse:
     """Retrieve a single pipeline run by ID."""
-    run = await get_pipeline_run(session=db, run_id=run_id)
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
-        )
+    run = await get_pipeline_run_or_404(db, run_id)
     return PipelineRunResponse.model_validate(run)

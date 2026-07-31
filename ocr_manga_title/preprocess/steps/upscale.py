@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from ocr_manga_title.preprocess.base import BasePreProcessor
+from ocr_manga_title.settings import available_memory_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +42,7 @@ _MODEL_HASHES: dict[str, str] = {
 class UpscaleStep(BasePreProcessor):
     """Upscales images using cubic interpolation or DNN super-resolution models."""
 
-    @property
-    def name(self) -> str:
-        """Machine-readable identifier for this step."""
-        return "upscale"
-
-    @property
-    def is_available(self) -> bool:
-        """Whether the step's runtime dependencies are installed."""
-        return True
+    step_name = "upscale"
 
     @property
     def timeout(self) -> int:
@@ -117,7 +110,7 @@ class UpscaleStep(BasePreProcessor):
             return True
         if method == "realesrgan":
             try:
-                import realesrgan  # noqa: F401
+                import realesrgan  # type: ignore[import-not-found]  # noqa: F401
 
                 return True
             except ImportError:
@@ -169,17 +162,6 @@ class UpscaleStep(BasePreProcessor):
         }
         return result, meta
 
-    @staticmethod
-    def _available_memory_bytes() -> int:
-        try:
-            with open("/proc/meminfo") as f:
-                for line in f:
-                    if line.startswith("MemAvailable:"):
-                        return int(line.split()[1]) * 1024
-        except (OSError, ValueError):
-            logger.debug("/proc/meminfo unavailable — upscale memory guard disabled")
-        return 0
-
     def _estimate_dnn_peak_bytes(self, h: int, w: int, method: str, scale: int) -> int:
         overhead = DNN_MEMORY_OVERHEAD.get(method, 6)
         output_pixels = h * w * scale * scale
@@ -190,7 +172,7 @@ class UpscaleStep(BasePreProcessor):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         h, w = image.shape[:2]
         estimated_peak = self._estimate_dnn_peak_bytes(h, w, method, scale)
-        available = self._available_memory_bytes()
+        available = available_memory_bytes()
 
         if available > 0:
             budget = available * MEMORY_SAFETY_FACTOR

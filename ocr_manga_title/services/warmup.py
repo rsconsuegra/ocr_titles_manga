@@ -1,10 +1,16 @@
+"""Eager loading of local OCR models on application startup."""
+
 import contextlib
 import io
 import logging
 import warnings
 from typing import Any
 
-from ocr_manga_title.engine.registry import MODEL_REGISTRY, ModelDescriptor
+from ocr_manga_title.engine.registry import (
+    MODEL_REGISTRY,
+    ModelDescriptor,
+    registry_defaults,
+)
 from ocr_manga_title.schemas import ModelConfig
 
 logger = logging.getLogger(__name__)
@@ -24,7 +30,7 @@ def _warmup_model(name: str, descriptor: ModelDescriptor) -> bool:
     config = ModelConfig(
         name=name,
         enabled=True,
-        parameters={**{p.name: p.default for p in descriptor.params}, "language": "eng"},
+        parameters={**registry_defaults(descriptor), "language": "eng"},
     )
     try:
         instance = descriptor.model_cls(config)

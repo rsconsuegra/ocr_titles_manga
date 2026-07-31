@@ -15,6 +15,7 @@ import json
 import logging
 import shutil
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,20 @@ from ocr_manga_title.services.preprocess import run_preprocessing_pipeline_from_
 from ocr_manga_title.settings import CACHE_DIR, CACHE_TTL_DAYS
 
 logger = logging.getLogger(__name__)
+
+_HASH_DISPLAY_LEN = 12
+
+
+@dataclass(frozen=True)
+class CacheEntry:
+    """Bundle of fields for a single cache upsert operation."""
+
+    image_hash: str
+    config_hash: str
+    cache_type: str
+    result_path: str | None
+    result_data: object
+    expires_at: datetime
 
 
 def hash_bytes(raw: bytes) -> str:
@@ -71,28 +86,22 @@ async def _evict_expired(
 
 async def _upsert_cache_entry(
     session: AsyncSession,
-    *,
-    image_hash: str,
-    config_hash: str,
-    cache_type: str,
-    result_path: str | None,
-    result_data: object,
-    expires_at: datetime,
+    entry: CacheEntry,
 ) -> None:
     from ocr_manga_title.db.models import ImageCache
 
     stmt = pg_insert(ImageCache).values(
         id=uuid.uuid4(),
-        image_hash=image_hash,
-        config_hash=config_hash,
-        cache_type=cache_type,
-        result_path=result_path,
-        result_data=result_data,
-        expires_at=expires_at,
+        image_hash=entry.image_hash,
+        config_hash=entry.config_hash,
+        cache_type=entry.cache_type,
+        result_path=entry.result_path,
+        result_data=entry.result_data,
+        expires_at=entry.expires_at,
     )
-    set_ = {"result_data": result_data, "expires_at": expires_at}
-    if result_path is not None:
-        set_["result_path"] = result_path
+    set_ = {"result_data": entry.result_data, "expires_at": entry.expires_at}
+    if entry.result_path is not None:
+        set_["result_path"] = entry.result_path
     stmt = stmt.on_conflict_do_update(
         index_elements=["image_hash", "config_hash", "cache_type"],
         set_=set_,
@@ -102,7 +111,9 @@ async def _upsert_cache_entry(
 
 
 async def get_preprocessed(
-    session: AsyncSession, image_hash: str, config_hash: str,
+    session: AsyncSession,
+    image_hash: str,
+    config_hash: str,
 ) -> tuple[str, Any] | None:
     """Look up a cached preprocessed image by content and config hash."""
     from ocr_manga_title.db.models import ImageCache
@@ -141,12 +152,14 @@ async def put_preprocessed(
 
     await _upsert_cache_entry(
         session,
-        image_hash=image_hash,
-        config_hash=config_hash,
-        cache_type="preprocess",
-        result_path=cached_path,
-        result_data=step_metadata,
-        expires_at=_expiry(),
+        CacheEntry(
+            image_hash=image_hash,
+            config_hash=config_hash,
+            cache_type="preprocess",
+            result_path=cached_path,
+            result_data=step_metadata,
+            expires_at=_expiry(),
+        ),
     )
     return cached_path, step_metadata
 
@@ -178,15 +191,16 @@ async def put_ocr_result(
     ocr_result: OCRResultData,
 ) -> None:
     """Persist an OCR result into the database cache."""
-    data = ocr_result.model_dump()
     await _upsert_cache_entry(
         session,
-        image_hash=image_hash,
-        config_hash=config_hash,
-        cache_type="ocr",
-        result_path=None,
-        result_data=data,
-        expires_at=_expiry(),
+        CacheEntry(
+            image_hash=image_hash,
+            config_hash=config_hash,
+            cache_type="ocr",
+            result_path=None,
+            result_data=ocr_result.model_dump(),
+            expires_at=_expiry(),
+        ),
     )
 
 
@@ -216,6 +230,11 @@ async def evict_expired(session: AsyncSession) -> int:
     return deleted
 
 
+def _model_config_hash(model_name: str, override: dict[str, Any]) -> str:
+    params = {k: v for k, v in override.items() if k != "enabled"}
+    return hash_config({"model": model_name, **params})
+
+
 async def run_preprocessing_cached(
     session: AsyncSession,
     raw: bytes,
@@ -227,7 +246,7 @@ async def run_preprocessing_cached(
 
     cached = await get_preprocessed(session, image_hash, config_hash)
     if cached:
-        logger.info("Preprocessing cache hit: %s", image_hash[:12])
+        logger.info("Preprocessing cache hit: %s", image_hash[:_HASH_DISPLAY_LEN])
         return cached
 
     image_array = decode_bytes(raw)
@@ -236,9 +255,13 @@ async def run_preprocessing_cached(
     )
 
     cached_result = await put_preprocessed(
-        session, image_hash, config_hash, result_path, step_metadata,
+        session,
+        image_hash,
+        config_hash,
+        result_path,
+        step_metadata,
     )
-    logger.info("Preprocessing cache miss: %s (cached)", image_hash[:12])
+    logger.info("Preprocessing cache miss: %s (cached)", image_hash[:_HASH_DISPLAY_LEN])
     return cached_result
 
 
@@ -255,16 +278,22 @@ async def run_ocr_cached(
 
     cached = await get_ocr_result(session, image_hash, config_hash)
     if cached:
-        logger.info("OCR cache hit: %s/%s", image_hash[:12], model_name)
+        logger.info("OCR cache hit: %s/%s", image_hash[:_HASH_DISPLAY_LEN], model_name)
         return cached
 
     result = await asyncio.to_thread(run_single_model, model_name, image_path, params)
 
     if not result.error:
         await put_ocr_result(session, image_hash, config_hash, result)
-        logger.info("OCR cache miss: %s/%s (cached)", image_hash[:12], model_name)
+        logger.info(
+            "OCR cache miss: %s/%s (cached)", image_hash[:_HASH_DISPLAY_LEN], model_name
+        )
     else:
-        logger.info("OCR cache miss: %s/%s (error, not cached)", image_hash[:12], model_name)
+        logger.info(
+            "OCR cache miss: %s/%s (error, not cached)",
+            image_hash[:_HASH_DISPLAY_LEN],
+            model_name,
+        )
 
     return result
 
@@ -286,12 +315,11 @@ async def run_all_models_cached(
         if not override.get("enabled", False):
             continue
 
-        params = {k: v for k, v in override.items() if k != "enabled"}
-        config_hash = hash_config({"model": name, **params})
+        config_hash = _model_config_hash(name, override)
 
         cached = await get_ocr_result(session, image_hash, config_hash)
         if cached:
-            logger.info("OCR cache hit: %s/%s", image_hash[:12], name)
+            logger.info("OCR cache hit: %s/%s", image_hash[:_HASH_DISPLAY_LEN], name)
             results.append(cached)
         else:
             uncached_models.append((name, override))
@@ -305,10 +333,7 @@ async def run_all_models_cached(
         for ocr_result in ocr_results:
             if not ocr_result.error:
                 override = dict(uncached_config.get(ocr_result.model_name, {}))
-                params = {k: v for k, v in override.items() if k != "enabled"}
-                config_hash = hash_config(
-                    {"model": ocr_result.model_name, **params}
-                )
+                config_hash = _model_config_hash(ocr_result.model_name, override)
                 await put_ocr_result(session, image_hash, config_hash, ocr_result)
             results.append(ocr_result)
 

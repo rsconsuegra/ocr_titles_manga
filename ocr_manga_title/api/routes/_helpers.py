@@ -1,5 +1,8 @@
 import asyncio
+import json
 import uuid
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -114,3 +117,65 @@ async def save_uploaded_image(
             detail=f"Invalid image: {e}",
         ) from e
     return raw, tmp_path
+
+
+def parse_json_form(raw: str, field_name: str) -> dict[str, Any]:
+    try:
+        result: dict[str, Any] = json.loads(raw)
+        return result
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid JSON in {field_name}",
+        ) from None
+
+
+async def get_profile_or_404(
+    db: AsyncSession, profile_id: uuid.UUID
+) -> Any:
+    from ocr_manga_title.db.crud import get_profile
+
+    profile = await get_profile(db, profile_id)
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found"
+        )
+    return profile
+
+
+async def get_pipeline_run_or_404(
+    db: AsyncSession, run_id: uuid.UUID
+) -> Any:
+    from ocr_manga_title.db.crud import get_pipeline_run
+
+    run = await get_pipeline_run(session=db, run_id=run_id)
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
+        )
+    return run
+
+
+EDSR_SYNC_BLOCKED_DETAIL = (
+    "EDSR super-resolution is too slow on CPU for interactive use. "
+    "Use FSRCNN or cubic for quick runs, or include EDSR in a pipeline profile."
+)
+
+
+def check_edsr_sync_blocked(step_name: str, config: dict[str, Any]) -> None:
+    from ocr_manga_title.preprocess.registry import SYNC_BLOCKED_METHODS
+
+    if step_name == "upscale" and config.get("method") in SYNC_BLOCKED_METHODS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=EDSR_SYNC_BLOCKED_DETAIL,
+        )
+
+
+@asynccontextmanager
+async def uploaded_image(file: UploadFile) -> AsyncGenerator[tuple[bytes, str]]:
+    raw, tmp_path = await save_uploaded_image(file)
+    try:
+        yield raw, tmp_path
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)

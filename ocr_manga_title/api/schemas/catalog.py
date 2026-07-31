@@ -1,10 +1,14 @@
+"""Pydantic schemas for catalog entry API requests and responses."""
+
 import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
 
+from ocr_manga_title.api.schemas._base import ORMSchema
 
-class CatalogEntryResponse(BaseModel):
+
+class CatalogEntryResponse(ORMSchema):
     """Serialized catalog entry returned by the API."""
 
     id: uuid.UUID
@@ -16,8 +20,6 @@ class CatalogEntryResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
 
 
 class CatalogUpdateRequest(BaseModel):

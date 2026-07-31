@@ -20,6 +20,14 @@ class ConfigurationError(MangaOCRError):
         field_name: str | None = None,
         file_path: str | None = None,
     ):
+        """Initialize a ConfigurationError.
+
+        Args:
+            message: Human-readable error description.
+            field_name: Optional name of the offending configuration field.
+            file_path: Optional path of the configuration file that caused the error.
+
+        """
         self.field_name = field_name
         self.file_path = file_path
         parts = []

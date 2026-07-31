@@ -18,15 +18,7 @@ class ROIStep(BasePreProcessor):
     bounding boxes into a single crop.
     """
 
-    @property
-    def name(self) -> str:
-        """Machine-readable identifier for this step."""
-        return "roi"
-
-    @property
-    def is_available(self) -> bool:
-        """Whether the step's runtime dependencies are installed."""
-        return True
+    step_name = "roi"
 
     def process(self, image: np.ndarray, config: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
         """Detect and crop the region of interest from the image."""

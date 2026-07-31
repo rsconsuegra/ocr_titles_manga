@@ -1,3 +1,5 @@
+"""Configuration management routes (catalog, profiles, LLM, Ollama, settings)."""
+
 from ocr_manga_title.api.routes.config import (
     catalog,
     llm as llm_route,

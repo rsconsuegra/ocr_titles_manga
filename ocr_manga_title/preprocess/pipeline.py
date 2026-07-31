@@ -26,8 +26,14 @@ class PreProcessingPipeline:
     STEP_ORDER = _STEP_ORDER
 
     def __init__(self, config: dict[str, Any]):
-        self._config = config.get("preprocessing", {})
-        self._debug = self._config.get("debug", False)
+        """Initialize the preprocessing pipeline from a configuration dict.
+
+        Args:
+            config: Full pipeline configuration containing a "preprocessing" key.
+
+        """
+        self._config: dict[str, Any] = config.get("preprocessing", {})
+        self._debug: bool = self._config.get("debug", False)
         self._steps: list[BasePreProcessor] = self._initialize_steps()
 
     def _initialize_steps(self) -> list[BasePreProcessor]:

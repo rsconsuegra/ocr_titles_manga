@@ -1,3 +1,5 @@
+"""Pipeline run endpoints - trigger, cancel, list, detail, and serve images."""
+
 import uuid
 from pathlib import Path
 
@@ -7,6 +9,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
+from ocr_manga_title.api.routes._helpers import get_pipeline_run_or_404
 from ocr_manga_title.api.schemas.pipeline import (
     PaginatedResponse,
     PipelineActionResponse,
@@ -15,7 +18,6 @@ from ocr_manga_title.api.schemas.pipeline import (
 )
 from ocr_manga_title.db.crud import (
     count_pipeline_runs,
-    get_pipeline_run,
     get_pipeline_run_detail,
     list_pipeline_runs,
     update_batch_progress,
@@ -35,11 +37,7 @@ async def trigger_pipeline(
     db: AsyncSession = Depends(get_db),
 ) -> PipelineActionResponse:
     """Enqueue a pending, failed, completed, or cancelled pipeline run for processing."""
-    run = await get_pipeline_run(session=db, run_id=run_id)
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
-        )
+    run = await get_pipeline_run_or_404(db, run_id)
     if run.status not in _RETRYABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -69,11 +67,7 @@ async def cancel_pipeline_run(
     """Cancel a pending or processing pipeline run."""
     from ocr_manga_title.schemas import utcnow
 
-    run = await get_pipeline_run(session=db, run_id=run_id)
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
-        )
+    run = await get_pipeline_run_or_404(db, run_id)
     if run.status not in _CANCELABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -135,11 +129,7 @@ async def get_run_image(
     db: AsyncSession = Depends(get_db),
 ) -> FileResponse:
     """Serve the original input image for a pipeline run."""
-    run = await get_pipeline_run(session=db, run_id=run_id)
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline run not found"
-        )
+    run = await get_pipeline_run_or_404(db, run_id)
     image_path = Path(run.input_image_path)
     if not image_path.exists():
         raise HTTPException(

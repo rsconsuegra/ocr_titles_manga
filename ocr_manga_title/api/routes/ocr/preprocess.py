@@ -1,11 +1,11 @@
 """Preprocessing playground API routes."""
 
-import json
 import time
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
+from ocr_manga_title.api.routes._helpers import check_edsr_sync_blocked, parse_json_form
 from ocr_manga_title.api.schemas.ocr import YamlExportResponse
 from ocr_manga_title.api.schemas.preprocess import (
     ExportPipelineRequest,
@@ -18,24 +18,10 @@ from ocr_manga_title.api.schemas.preprocess import (
 from ocr_manga_title.preprocess.registry import (
     STEP_ORDER,
     STEP_REGISTRY,
-    SYNC_BLOCKED_METHODS,
     get_all_steps,
 )
 from ocr_manga_title.services.image import decode_bytes, encode_image
 from ocr_manga_title.services.preprocess import get_step_instance
-
-SYNC_BLOCKED_DETAIL = (
-    "EDSR super-resolution is too slow on CPU for interactive use. "
-    "Use FSRCNN or cubic for previews, or include EDSR in a pipeline profile."
-)
-
-
-def _check_sync_blocked(step_name: str, config: dict[str, Any]) -> None:
-    if step_name == "upscale" and config.get("method") in SYNC_BLOCKED_METHODS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=SYNC_BLOCKED_DETAIL,
-        )
 
 router = APIRouter()
 
@@ -68,14 +54,8 @@ async def preview_step(
             detail=f"Unknown step: {step_name}",
         )
 
-    try:
-        parsed_params = json.loads(params)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in params",
-        ) from None
-    _check_sync_blocked(step_name, parsed_params)
+    parsed_params = parse_json_form(params, "params")
+    check_edsr_sync_blocked(step_name, parsed_params)
 
     try:
         raw = await file.read()
@@ -115,13 +95,7 @@ async def preview_pipeline(
     steps: str = Form("{}"),
 ) -> PreviewPipelineResponse:
     """Preview the full preprocessing pipeline, returning an image after each step."""
-    try:
-        parsed_steps = json.loads(steps)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in steps",
-        ) from None
+    parsed_steps = parse_json_form(steps, "steps")
 
     try:
         raw = await file.read()
@@ -152,7 +126,7 @@ async def preview_pipeline(
             continue
 
         step = get_step_instance(step_name)
-        _check_sync_blocked(step_name, step_config)
+        check_edsr_sync_blocked(step_name, step_config)
         step_start = time.monotonic()
         try:
             result_img, metadata = step.process(current_image, step_config)

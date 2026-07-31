@@ -1,8 +1,6 @@
 """OCR playground API routes."""
 
 import asyncio
-import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -11,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ocr_manga_title.api.dependencies import get_db
 from ocr_manga_title.api.routes._helpers import (
+    parse_json_form,
     parse_llm_form_config,
-    save_uploaded_image,
+    uploaded_image,
 )
+from ocr_manga_title.api.routes.ocr.models import _db_row_to_dict
 from ocr_manga_title.api.schemas.ocr import (
     ModelDescriptorResponse,
     ModelParamDescriptorResponse,
@@ -23,7 +23,7 @@ from ocr_manga_title.api.schemas.ocr import (
 )
 from ocr_manga_title.config import resolve_model_configs
 from ocr_manga_title.db.models import ModelConfig as ModelConfigDB
-from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model
+from ocr_manga_title.engine.registry import MODEL_REGISTRY, get_model, registry_defaults
 from ocr_manga_title.services.cache import hash_bytes, run_ocr_cached
 from ocr_manga_title.services.ocr import (
     _parse_languages,
@@ -39,10 +39,7 @@ async def list_ocr_models(db: AsyncSession = Depends(get_db)) -> list[ModelDescr
     """Return all OCR model descriptors with availability and effective enabled status."""
     stmt = select(ModelConfigDB)
     result = await db.execute(stmt)
-    db_rows = {
-        m.model_name: {"is_enabled": m.is_enabled, "parameters": m.parameters or {}}
-        for m in result.scalars().all()
-    }
+    db_rows = {m.model_name: _db_row_to_dict(m) for m in result.scalars().all()}
 
     resolved = resolve_model_configs(db_rows)
 
@@ -90,16 +87,9 @@ async def run_ocr(
             detail=f"Unknown model: {model_name}",
         )
 
-    try:
-        parsed_params = json.loads(params)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON in params",
-        ) from None
+    parsed_params = parse_json_form(params, "params")
 
-    raw, tmp_path = await save_uploaded_image(file)
-    try:
+    async with uploaded_image(file) as (raw, tmp_path):
         image_hash = hash_bytes(raw)
         ocr_data = await run_ocr_cached(
             db, image_hash, model_name, tmp_path, parsed_params
@@ -124,8 +114,6 @@ async def run_ocr(
             )
 
         return OCRRunResponse(ocr=ocr_data, llm=llm_data)
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
 
 
 @router.post("/export", response_model=YamlExportResponse)
@@ -136,7 +124,7 @@ async def export_ocr_config(body: OCRExportRequest) -> YamlExportResponse:
     models_yaml: dict[str, dict[str, Any]] = {}
     for name, descriptor in MODEL_REGISTRY.items():
         override = body.models.get(name, {})
-        params = {p.name: p.default for p in descriptor.params}
+        params = registry_defaults(descriptor)
         params.update(override)
 
         if "languages" in params:

@@ -1,3 +1,5 @@
+"""SQLAlchemy ORM models for all database tables."""
+
 import uuid
 from datetime import datetime
 from typing import Any

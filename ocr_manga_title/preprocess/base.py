@@ -17,17 +17,22 @@ class BasePreProcessor(ABC):
 
     Each step receives a numpy image and a config dict, and returns
     the processed image along with metadata.
+
+    Subclasses must set :attr:`step_name` and implement :meth:`process`.
+    Override :attr:`is_available` if the step has optional dependencies.
     """
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Machine-readable identifier for this step."""
+    step_name: str = ""
 
     @property
-    @abstractmethod
+    def name(self) -> str:
+        """Machine-readable identifier for this step."""
+        return self.step_name
+
+    @property
     def is_available(self) -> bool:
         """Whether the step's runtime dependencies are installed."""
+        return True
 
     @property
     def timeout(self) -> int:

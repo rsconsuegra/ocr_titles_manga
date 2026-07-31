@@ -1,11 +1,15 @@
+"""Pydantic schemas for post-processing result API requests and responses."""
+
 import uuid
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
 
+from ocr_manga_title.api.schemas._base import ORMSchema
 
-class PostProcessingResultResponse(BaseModel):
+
+class PostProcessingResultResponse(ORMSchema):
     """Serialized post-processing result returned by the API."""
 
     id: uuid.UUID
@@ -17,8 +21,6 @@ class PostProcessingResultResponse(BaseModel):
     raw_response: str | None = None
     extra_metadata: dict[str, Any] | None = None
     created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class ResultOverrideRequest(BaseModel):

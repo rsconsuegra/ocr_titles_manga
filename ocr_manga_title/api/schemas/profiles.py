@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from ocr_manga_title.api.schemas._base import ORMSchema
+
 
 class ProfileCreateRequest(BaseModel):
     """Request body for creating a new pipeline profile."""
@@ -35,10 +37,8 @@ class ProfileUpdateRequest(BaseModel):
     is_default: bool | None = None
 
 
-class ProfileResponse(BaseModel):
+class ProfileResponse(ORMSchema):
     """Full profile representation returned by the API."""
-
-    model_config = {"from_attributes": True}
 
     id: uuid.UUID
     name: str

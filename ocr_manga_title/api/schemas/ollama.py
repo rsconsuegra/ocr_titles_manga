@@ -1,5 +1,7 @@
 """Pydantic schemas for the Ollama integration API."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -27,6 +29,37 @@ class OllamaLLMModelResponse(BaseModel):
     modified_at: str = ""
     parameter_size: str = ""
     quantization: str = ""
+
+
+class OllamaSettingsResponse(BaseModel):
+    """Current Ollama configuration and available models."""
+
+    base_url: str
+    configured: bool
+    default_model: str
+    default_vision_model: str
+    available_llm_models: list[OllamaLLMModelResponse]
+    available_vision_models: list[OllamaVisionModelResponse]
+
+
+class OllamaUrlRequest(BaseModel):
+    """Request body for updating the Ollama base URL and default models."""
+
+    base_url: str
+    default_model: str | None = None
+    default_vision_model: str | None = None
+
+
+class OllamaUrlResponse(BaseModel):
+    """Response containing Ollama connection info and available models."""
+
+    base_url: str
+    default_model: str
+    default_vision_model: str
+    available_llm_models: list[OllamaLLMModelResponse]
+    available_vision_models: list[OllamaVisionModelResponse]
+    validated: bool
+    message: str
 
 
 class LLMProviderInfo(BaseModel):
